@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>Bright Escher Matrix - VR Ready</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; user-select: none; }
+        #folderInput { display: none; }
+        .upload-btn { position: absolute; top: 20px; right: 20px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: rgba(255, 255, 255, 0.8); padding: 10px 20px; cursor: pointer; border-radius: 30px; font-size: 14px; backdrop-filter: blur(5px); transition: 0.3s; z-index: 1000; }
+        .upload-btn:hover { background: rgba(255, 255, 255, 0.3); color: white; }
+        #breathGuide { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; text-align: center; pointer-events: none; z-index: 1500; opacity: 0; transition: opacity 0.5s ease-in-out; text-shadow: 0 0 20px rgba(0, 0, 0, 0.5); }
+        #breathAction { font-size: 2rem; font-weight: 300; letter-spacing: 5px; text-transform: uppercase; margin-bottom: 15px; opacity: 0.9; }
+        #breathCount { font-size: 3.5rem; font-weight: 100; font-variant-numeric: tabular-nums; min-height: 60px; }
+        #loadingMsg { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 24px; background: rgba(0, 0, 0, 0.8); padding: 40px; border: 1px solid white; z-index: 2000; }
+    </style>
+</head>
+<body>
+
+    <label class="upload-btn">
+        📂 טען תיקייה
+        <input type="file" id="folderInput" webkitdirectory directory multiple>
+    </label>
+
+    <div id="loadingMsg">מעבד ארכיטקטורה...</div>
+
+    <div id="breathGuide">
+        <div id="breathAction">Inhale</div>
+        <div id="breathCount"></div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { VRButton } from 'three/addons/webxr/VRButton.js'; // 1. IMPORT VR BUTTON
+
+        // ==========================================
+        // 1. CONFIGURATION
+        // ==========================================
+        const CONFIG = {
+            world: {
+                size: 400,
+                megaStructureCount: 50, 
+                unitSize: 30,
+                density: 0.38 
+            },
+            nav: {
+                panSpeed: 0.3,
+                zoomSpeed: 1.5,
+                rotateSpeed: 0.004,
+                damping: 0.05,
+                idleRotSpeed: 0.002
+            },
+            timing: {
+                multiplier: 1.0,
+                uiCountSeconds: 4,
+                waitBeforeFloat: 3.0,
+                floatDuration: 7.0,
+                totalCycles: 5,
+                ghostDuration: 10.0
+            },
+            physics: {
+                maxDrift: 0.08,
+                baseVacuum: 0.02,
+                acceleration: 0.02,
+                scatterSpeed: 0.005
+            },
+            effects: {
+                maxEmissive: 0.85, 
+                maxHeavyBlur: 0.025,
+                distortion: 3.0,
+                noise: 0.5,
+                tolerance: 0.15,
+                transitionSpeed: 0.02
+            },
+            urls: [
+                'https://picsum.photos/id/10/800/800',
+                'https://picsum.photos/id/15/800/1200',
+                'https://picsum.photos/id/12/800/800'
+            ]
+        };
+
+        const PHASE_DURATION = CONFIG.timing.uiCountSeconds * CONFIG.timing.multiplier;
+        const FULL_CYCLE_DURATION = PHASE_DURATION * 4;
+        const TIME_BREATH_START = CONFIG.timing.waitBeforeFloat + CONFIG.timing.floatDuration;
+        const TIME_VOID_START = TIME_BREATH_START + (FULL_CYCLE_DURATION * CONFIG.timing.totalCycles);
+
+        // ==========================================
+        // 2. SHADER LIBRARY
+        // ==========================================
+        const SHADERS = {
+            vertex: `
+                uniform float displacementStrength; uniform float displacementRange; uniform vec3 cameraPos; uniform sampler2D map;
+                varying vec2 vUv; varying float vDist;
+                void main() {
+                    vUv = uv;
+                    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+                    float dist = distance(worldPosition.xyz, cameraPos); 
+                    vDist = dist;
+                    vec4 texColor = texture2D(map, uv);
+                    float brightness = texColor.r * 0.3 + texColor.g * 0.59 + texColor.b * 0.11;
+                    float effectFactor = max(0.0, (displacementRange - dist) / displacementRange);
+                    effectFactor = pow(effectFactor, 2.0); 
+                    vec3 newPosition = position + normal * brightness * displacementStrength * effectFactor;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
+                }
+            `,
+            fragment: `
+                uniform sampler2D map; uniform float uTime; uniform vec2 uClickedUV;
+                uniform float uGeoStrength; uniform float uNoiseStrength; uniform float uEffectFactor;
+                uniform float uTolerance; uniform bool uHasClick; 
+                uniform float uEmissiveStrength; uniform float uBlurStrength; 
+                uniform float uAgnosiaStrength; uniform float uHeavyBlur;
+                varying vec2 vUv; varying float vDist;
+                
+                vec3 permute(vec3 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
+                float snoise(vec2 v) {
+                    const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+                    vec2 i  = floor(v + dot(v, C.yy) ); vec2 x0 = v - i + dot(i, C.xx);
+                    vec2 i1; i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+                    vec4 x12 = x0.xyxy + C.xxzz; x12.xy -= i1;
+                    i = mod(i, 289.0);
+                    vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
+                    vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+                    m = m*m ; m = m*m ;
+                    vec3 x = 2.0 * fract(p * C.www) - 1.0;
+                    vec3 h = abs(x) - 0.5; vec3 ox = floor(x + 0.5); vec3 a0 = x - ox;
+                    m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+                    vec3 g; g.x  = a0.x  * x0.x  + h.x  * x0.y; g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+                    return 130.0 * dot(m, g);
+                }
+                vec2 complexWarp(vec2 uv, float strength, float time) {
+                    vec2 p = uv - 0.5; float r = length(p); float a = atan(p.y, p.x);
+                    float wave = sin(time * 0.2 + r * 4.0) * strength;
+                    float newA = a + (wave * r * 1.5); 
+                    float newR = r * (1.0 + strength * 0.1 * sin(time * 0.15) * r); 
+                    vec2 newP = vec2(cos(newA), sin(newA)) * newR;
+                    return newP + 0.5;
+                }
+                void main() {
+                    vec4 originalColor = texture2D(map, vUv);
+                    float finalMask = 0.0;
+                    if (uHasClick) {
+                        vec4 clickedColor = texture2D(map, uClickedUV);
+                        float distColor = distance(originalColor.rgb, clickedColor.rgb);
+                        finalMask = 1.0 - smoothstep(uTolerance, uTolerance + 0.05, distColor);
+                        finalMask *= uEffectFactor;
+                    }
+                    vec2 fluidUV = vUv;
+                    if (finalMask > 0.01) {
+                        float n = snoise(vUv * 4.0 + uTime * 0.1); 
+                        fluidUV = vUv + vec2(n) * uNoiseStrength * 0.15 * finalMask;
+                        vec2 warpedUV = complexWarp(fluidUV, uGeoStrength * finalMask, uTime);
+                        fluidUV = mix(vUv, warpedUV, finalMask);
+                    }
+                    if (uAgnosiaStrength > 0.01) {
+                        float n = snoise(vUv * 4.0 + uTime * 0.1); 
+                        vec2 warpedUV = complexWarp(vUv, 2.0, uTime); 
+                        fluidUV = mix(fluidUV, warpedUV + vec2(n)*0.1, uAgnosiaStrength); 
+                    }
+                    if (uBlurStrength > 0.0001) {
+                          float steamNoise = snoise(vUv * 80.0 + uTime * 0.5); 
+                          fluidUV += vec2(steamNoise) * uBlurStrength;
+                    }
+                    vec4 distortedColor = texture2D(map, fluidUV);
+                    if (uHeavyBlur > 0.0001) {
+                        float off = uHeavyBlur * 5.0; 
+                        vec4 sum = vec4(0.0);
+                        sum += texture2D(map, fluidUV) * 0.2;
+                        sum += texture2D(map, fluidUV + vec2(off, 0.0)) * 0.1;
+                        sum += texture2D(map, fluidUV - vec2(off, 0.0)) * 0.1;
+                        sum += texture2D(map, fluidUV + vec2(0.0, off)) * 0.1;
+                        sum += texture2D(map, fluidUV - vec2(0.0, off)) * 0.1;
+                        sum += texture2D(map, fluidUV + vec2(off, off)) * 0.1;
+                        sum += texture2D(map, fluidUV + vec2(-off, -off)) * 0.1;
+                        sum += texture2D(map, fluidUV + vec2(off, -off)) * 0.1;
+                        sum += texture2D(map, fluidUV + vec2(-off, off)) * 0.1;
+                        distortedColor = sum; 
+                    }
+                    float luminance = dot(distortedColor.rgb, vec3(0.299, 0.587, 0.114));
+                    float heatMap = pow(luminance, 1.8);
+                    vec3 coldColor = vec3(0.2, 0.02, 0.0); 
+                    vec3 midColor = vec3(1.0, 0.4, 0.05); 
+                    vec3 hotColor = vec3(1.0, 1.0, 0.9);
+                    vec3 thermalColor = mix(coldColor, midColor, smoothstep(0.0, 0.5, heatMap));
+                    thermalColor = mix(thermalColor, hotColor, smoothstep(0.5, 1.0, heatMap));
+                    vec3 finalColor = mix(distortedColor.rgb, thermalColor, uEmissiveStrength * 0.9);
+                    finalColor += thermalColor * uEmissiveStrength * 0.7;
+                    float fogStart = 30.0;
+                    float fogEnd = 150.0;
+                    float fogFactor = smoothstep(fogStart, fogEnd, vDist);
+                    float piercing = uEmissiveStrength * 0.9;
+                    float effectiveFog = clamp(fogFactor - piercing, 0.0, 1.0);
+                    gl_FragColor = mix(vec4(finalColor, 1.0), vec4(0.0, 0.0, 0.0, 1.0), effectiveFog);
+                }
+            `,
+            turrellVertex: `varying vec2 vUv; void main(){vUv=uv; gl_Position=projectionMatrix * modelViewMatrix * vec4(position, 1.0);}`,
+            turrellFragment: `
+                uniform float uTime; uniform float uOpacity; varying vec2 vUv;
+                void main(){ 
+                    float t=uTime*0.1; 
+                    vec2 c1=vec2(0.5+0.3*sin(t), 0.5+0.2*cos(t*1.3)); 
+                    float d=distance(vUv,c1);
+                    vec3 col=mix(vec3(0.1, 0.0, 0.3), vec3(0.2, 0.4, 0.8), smoothstep(0.0, 1.5, d));
+                    gl_FragColor=vec4(col, uOpacity); 
+                }
+            `
+        };
+
+        // ... AssetManager ...
+        class AssetManager {
+            constructor() { this.materials = []; }
+            loadDefaults(onComplete) {
+                let loaded = 0; const loader = new THREE.TextureLoader();
+                CONFIG.urls.forEach(url => {
+                    loader.load(url, (tex) => { tex.colorSpace = THREE.SRGBColorSpace; this.materials.push(this.createMaterial(tex)); loaded++; if (loaded === CONFIG.urls.length && onComplete) onComplete(); }, undefined, () => { loaded++; if (loaded === CONFIG.urls.length && onComplete) onComplete(); });
+                });
+            }
+            loadFromFiles(files, onComplete) {
+                const loader = new THREE.TextureLoader(); this.materials = []; let loaded = 0;
+                const validFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+                if (validFiles.length === 0) return alert("No images found.");
+                validFiles.forEach(file => {
+                    const url = URL.createObjectURL(file);
+                    loader.load(url, (tex) => { tex.colorSpace = THREE.SRGBColorSpace; tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter; this.materials.push(this.createMaterial(tex)); loaded++; if (loaded === validFiles.length && onComplete) onComplete(); });
+                });
+            }
+            createMaterial(texture) {
+                const mat = new THREE.ShaderMaterial({
+                    uniforms: {
+                        map: { value: texture || new THREE.Texture() },
+                        cameraPos: { value: new THREE.Vector3() },
+                        displacementStrength: { value: 7.0 }, displacementRange: { value: 50.0 },
+                        uTime: { value: 0.0 }, uClickedUV: { value: new THREE.Vector2(0.5, 0.5) },
+                        uGeoStrength: { value: CONFIG.effects.distortion }, uNoiseStrength: { value: CONFIG.effects.noise },
+                        uTolerance: { value: CONFIG.effects.tolerance }, uEffectFactor: { value: 0.0 },
+                        uHasClick: { value: false }, uEmissiveStrength: { value: 0.0 },
+                        uBlurStrength: { value: 0.0 }, uAgnosiaStrength: { value: 0.0 }, uHeavyBlur: { value: 0.0 }
+                    },
+                    vertexShader: SHADERS.vertex, fragmentShader: SHADERS.fragment, side: THREE.DoubleSide
+                });
+                if (texture && texture.image) { mat.userData.imgWidth = texture.image.width; mat.userData.imgHeight = texture.image.height; }
+                return mat;
+            }
+            getRandomMaterial() {
+                if (this.materials.length === 0) return new THREE.MeshBasicMaterial({ color: 0x333333, wireframe: true });
+                return this.materials[Math.floor(Math.random() * this.materials.length)];
+            }
+        }
+
+        class WorldBuilder {
+            constructor(scene, assetManager) { this.scene = scene; this.assetManager = assetManager; this.structures = []; this.ghostPlane = null; this.turrellPlane = null; }
+            build() {
+                this.structures.forEach(s => this.scene.remove(s)); this.structures = [];
+                const geo = new THREE.PlaneGeometry(CONFIG.world.unitSize, CONFIG.world.unitSize, 32, 32);
+                for (let i = 0; i < CONFIG.world.megaStructureCount; i++) {
+                    const groupCenterX = (Math.random() - 0.5) * CONFIG.world.size;
+                    const groupCenterY = (Math.random() - 0.5) * CONFIG.world.size;
+                    const groupCenterZ = (Math.random() - 0.5) * CONFIG.world.size;
+                    const rotAxis = Math.floor(Math.random() * 3); const rotAngle = Math.floor(Math.random() * 4) * (Math.PI / 2);
+                    for (let x = -2; x <= 2; x++) {
+                        for (let y = -2; y <= 2; y++) {
+                            for (let z = -2; z <= 2; z++) {
+                                if (Math.random() < CONFIG.world.density) continue;
+                                const mat = this.assetManager.getRandomMaterial(); const m = new THREE.Mesh(geo, mat);
+                                if (mat.userData.imgWidth) { const ar = mat.userData.imgWidth / mat.userData.imgHeight; if (ar >= 1) m.scale.set(1, 1 / ar, 1); else m.scale.set(ar, 1, 1); }
+                                const px = x * CONFIG.world.unitSize; const py = y * CONFIG.world.unitSize; const pz = z * CONFIG.world.unitSize;
+                                const t = Math.random(); const localPos = new THREE.Vector3(); const localRot = new THREE.Euler();
+                                if (t < 0.33) { localRot.x = Math.PI / 2; localPos.set(px, py - CONFIG.world.unitSize / 2, pz); } else if (t < 0.66) { localRot.y = Math.PI / 2; localPos.set(px - CONFIG.world.unitSize / 2, py, pz); } else { localPos.set(px, py, pz - CONFIG.world.unitSize / 2); }
+                                m.position.copy(localPos); m.rotation.copy(localRot);
+                                const groupQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(rotAxis===0?1:0, rotAxis===1?1:0, rotAxis===2?1:0), rotAngle);
+                                m.position.applyQuaternion(groupQuat); m.quaternion.premultiply(groupQuat);
+                                m.position.add(new THREE.Vector3(groupCenterX, groupCenterY, groupCenterZ));
+                                const uniqueDrift = new THREE.Vector3((Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 0.5 + 0.5).normalize();
+                                m.userData.driftVec = uniqueDrift; m.userData.originalPos = m.position.clone();
+                                this.scene.add(m); this.structures.push(m);
+                            }
+                        }
+                    }
+                }
+            }
+            buildGhost() {
+                const geo = new THREE.PlaneGeometry(CONFIG.world.unitSize * 1.5, CONFIG.world.unitSize * 1.5, 32, 32);
+                const mat = this.assetManager.getRandomMaterial().clone(); mat.uniforms.displacementStrength.value = 15.0; mat.transparent = true; mat.opacity = 0.9;
+                this.ghostPlane = new THREE.Mesh(geo, mat); this.ghostPlane.visible = false; this.ghostPlane.userData.isGhost = true; this.scene.add(this.ghostPlane);
+            }
+            buildTurrell(camera) {
+                const geo = new THREE.PlaneGeometry(2000, 2000);
+                const mat = new THREE.ShaderMaterial({ uniforms: { uTime: { value: 0 }, uOpacity: { value: 0.0 } }, vertexShader: SHADERS.turrellVertex, fragmentShader: SHADERS.turrellFragment, transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending });
+                this.turrellPlane = new THREE.Mesh(geo, mat); this.turrellPlane.position.set(0, 0, -500); this.turrellPlane.renderOrder = -1;
+                // IN VR, Turrell must be attached to camera so it follows head, this is correct
+                camera.add(this.turrellPlane);
+                // Camera is added to scene later via rig
+            }
+        }
+
+        class BreathController {
+            constructor() {
+                this.breathEl = document.getElementById('breathGuide'); this.actionEl = document.getElementById('breathAction'); this.countEl = document.getElementById('breathCount');
+                this.inhalePlanes = []; this.inhaleEffectActive = false; this.ghostActive = false; this.ghostStartTime = 0; this.ghostStartPos = new THREE.Vector3(); this.ghostEndPos = new THREE.Vector3();
+                this.targetDriftSpeed = 0; this.targetVacuumSpeed = 0; this.targetAgnosia = 0; this.targetHeavyBlur = 0; this.currentEmissive = 0; this.currentBlur = 0; this.attentionInfluence = 0; this.showBreath = false;
+            }
+            update(timeSinceInput, camera, world, attentionSystem) {
+                const now = (Date.now() - startTime) / 1000;
+                let cycleFactor = 1.0;
+                if (timeSinceInput < TIME_BREATH_START) { this.targetDriftSpeed = 0; this.targetVacuumSpeed = 0; this.showBreath = false; }
+                else if (timeSinceInput < TIME_VOID_START) {
+                    const breathTime = timeSinceInput - TIME_BREATH_START; const cycleIndex = Math.floor(breathTime / FULL_CYCLE_DURATION); const timeInCycle = breathTime % FULL_CYCLE_DURATION; cycleFactor = 1.0 + (cycleIndex * 0.1);
+                    if (timeInCycle < PHASE_DURATION) {
+                        this.showBreath = true; this.actionEl.innerText = "Inhale"; const displayNum = Math.ceil((PHASE_DURATION - timeInCycle) / CONFIG.timing.multiplier); this.countEl.innerText = displayNum < 4 ? displayNum : "";
+                        this.targetDriftSpeed = 0; this.targetVacuumSpeed = 0; this.attentionInfluence = 0;
+                        if (!this.inhaleEffectActive) { this.triggerInhale(camera, world); this.inhaleEffectActive = true; }
+                        const inhaleProgress = timeInCycle / PHASE_DURATION; this.currentEmissive = inhaleProgress * CONFIG.effects.maxEmissive;
+                    } else if (timeInCycle < PHASE_DURATION * 2) {
+                        this.showBreath = false; this.targetDriftSpeed = 0; this.targetVacuumSpeed = 0; this.attentionInfluence = 0; this.inhaleEffectActive = false;
+                        const holdPulse = Math.sin(now * 3.0) * 0.05 + 0.95; const targetHoldEmissive = CONFIG.effects.maxEmissive * holdPulse; this.currentEmissive += (targetHoldEmissive - this.currentEmissive) * 0.1;
+                    } else if (timeInCycle < PHASE_DURATION * 3) {
+                        this.showBreath = true; this.actionEl.innerText = "Exhale"; const exhaleTime = timeInCycle - (PHASE_DURATION * 2); const displayNum = Math.ceil((PHASE_DURATION - exhaleTime) / CONFIG.timing.multiplier); this.countEl.innerText = displayNum < 4 ? displayNum : "";
+                        this.targetDriftSpeed = CONFIG.physics.maxDrift; this.targetVacuumSpeed = CONFIG.physics.baseVacuum * cycleFactor; this.attentionInfluence = 0; this.currentEmissive += (0.0 - this.currentEmissive) * 0.05;
+                    } else {
+                        this.showBreath = false; this.targetDriftSpeed = 0; this.targetVacuumSpeed = 0; this.currentEmissive = 0.0;
+                        if (!attentionSystem.activeMesh) attentionSystem.trigger(camera, world.structures); this.attentionInfluence = 1;
+                    }
+                    if (cycleIndex === 1 && !this.ghostActive && timeInCycle > (PHASE_DURATION * 2) + 1.0 && timeInCycle < (PHASE_DURATION * 3)) { this.triggerGhost(camera, world.ghostPlane, now); }
+                } else {
+                    this.targetDriftSpeed = CONFIG.physics.maxDrift * 0.3; this.targetVacuumSpeed = CONFIG.physics.baseVacuum * 0.5; this.showBreath = false; const timeInVoid = timeSinceInput - TIME_VOID_START;
+                    if (timeInVoid > 3.0) { this.targetAgnosia = Math.min((timeInVoid - 3.0) / 3.0, 1.0); }
+                    if (timeInVoid > 6.0) { this.targetHeavyBlur = Math.min((timeInVoid - 6.0) / 4.0, 1.0) * CONFIG.effects.maxHeavyBlur; }
+                }
+                if (this.showBreath) this.breathEl.style.opacity = 1; else this.breathEl.style.opacity = 0;
+                return { drift: this.targetDriftSpeed, vacuum: this.targetVacuumSpeed, agnosia: this.targetAgnosia, heavyBlur: this.targetHeavyBlur, emissive: this.currentEmissive, blur: this.currentBlur, attention: this.attentionInfluence };
+            }
+            triggerInhale(camera, world) {
+                this.inhalePlanes = []; const frustum = new THREE.Frustum(); const projScreenMatrix = new THREE.Matrix4(); camera.updateMatrixWorld(); projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); frustum.setFromProjectionMatrix(projScreenMatrix);
+                let visibleCandidates = []; world.structures.forEach(child => { if (child.isMesh && frustum.containsPoint(child.position)) { const d = child.position.distanceTo(camera.position); if (d < 150) visibleCandidates.push(child); } });
+                visibleCandidates.sort(() => Math.random() - 0.5); this.inhalePlanes = visibleCandidates.slice(0, Math.ceil(visibleCandidates.length * 0.25));
+            }
+            triggerGhost(camera, plane, now) {
+                this.ghostActive = true; this.ghostStartTime = now; plane.visible = true;
+                const tmpDir = new THREE.Vector3(); const right = new THREE.Vector3(); camera.getWorldDirection(tmpDir); right.crossVectors(tmpDir, camera.up).normalize();
+                // In VR, ghost should spawn relative to the camera RIG or Camera. 
+                // Since camera is in rig, camera.position is local to rig, need world pos.
+                const camWorldPos = new THREE.Vector3(); camera.getWorldPosition(camWorldPos);
+                const center = camWorldPos.clone().add(tmpDir.multiplyScalar(60));
+                const dirType = Math.floor(Math.random() * 4);
+                if (dirType === 0) { this.ghostStartPos.copy(center).addScaledVector(right, -140); this.ghostEndPos.copy(center).addScaledVector(right, 140); }
+                else if (dirType === 1) { this.ghostStartPos.copy(center).addScaledVector(right, 140); this.ghostEndPos.copy(center).addScaledVector(right, -140); }
+                else if (dirType === 2) { this.ghostStartPos.copy(center).addScaledVector(camera.up, 100); this.ghostEndPos.copy(center).addScaledVector(camera.up, -100); }
+                else { this.ghostStartPos.copy(center).addScaledVector(camera.up, -100); this.ghostEndPos.copy(center).addScaledVector(camera.up, 100); }
+                plane.lookAt(camWorldPos);
+            }
+        }
+
+        class InputHandler {
+            constructor(camera, rig, app) {
+                this.camera = camera;
+                this.rig = rig; // 3. USE RIG FOR MOVEMENT
+                this.app = app;
+                this.targetYaw = 0; this.targetPitch = 0; this.currentYaw = 0; this.currentPitch = 0;
+                this.targetPosition = new THREE.Vector3(0,0,100); // Start pos
+                this.rig.position.copy(this.targetPosition);
+
+                this.isMouseDown = false; this.mouse = new THREE.Vector2(); this.lastMouse = {x:0, y:0}; this.startMouse = {x:0, y:0};
+                this.raycaster = new THREE.Raycaster();
+                this.initListeners();
+            }
+            initListeners() {
+                // Keep standard controls for Desktop/Debugging mode
+                document.addEventListener('wheel', (e) => { e.preventDefault(); this.app.resetIdle(); this.onScroll(e); }, { passive: false });
+                document.addEventListener('mousedown', (e) => { if (e.target.closest('.upload-btn')) return; e.preventDefault(); this.app.resetIdle(); this.isMouseDown = true; this.startMouse = {x: e.clientX, y: e.clientY}; this.lastMouse = {x: e.clientX, y: e.clientY}; document.body.style.cursor = 'grabbing'; });
+                document.addEventListener('mouseup', (e) => { this.isMouseDown = false; const dist = Math.hypot(e.clientX - this.startMouse.x, e.clientY - this.startMouse.y); if (dist < 5) this.handleClick(e); document.body.style.cursor = 'default'; });
+                document.addEventListener('mousemove', (e) => { if (!this.isMouseDown) return; this.app.resetIdle(); const dx = e.clientX - this.lastMouse.x; const dy = e.clientY - this.lastMouse.y; this.lastMouse = {x: e.clientX, y: e.clientY}; this.targetYaw += dx * CONFIG.nav.rotateSpeed; this.targetPitch += dy * CONFIG.nav.rotateSpeed; this.targetPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, this.targetPitch)); });
+            }
+            onScroll(e) {
+                const z = e.ctrlKey || e.metaKey;
+                // Move RIG not Camera
+                const rotMatrix = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(this.targetPitch, this.targetYaw, 0, 'YXZ'));
+                const forward = new THREE.Vector3(0,0,-1).applyMatrix4(rotMatrix); const right = new THREE.Vector3(1,0,0).applyMatrix4(rotMatrix); const up = new THREE.Vector3(0,1,0).applyMatrix4(rotMatrix);
+                if (z) { this.targetPosition.addScaledVector(forward, -Math.sign(e.deltaY) * CONFIG.nav.zoomSpeed * 5); }
+                else { this.targetPosition.addScaledVector(right, e.deltaX * CONFIG.nav.panSpeed); this.targetPosition.addScaledVector(up, -e.deltaY * CONFIG.nav.panSpeed); }
+            }
+            handleClick(event) {
+                // Standard click works for desktop. VR Controller clicks need 'select' event (not implemented here for simplicity, but mouse click still works on desktop view)
+                this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1; this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+                this.raycaster.setFromCamera(this.mouse, this.camera);
+                const intersects = this.raycaster.intersectObjects(this.app.world.structures); 
+                if (intersects.length > 0) { const intersect = intersects[0]; const mesh = intersect.object; if (!mesh.userData.isUniqueMaterial) { mesh.material = mesh.material.clone(); mesh.userData.isUniqueMaterial = true; } mesh.material.uniforms.uClickedUV.value.copy(intersect.uv); mesh.material.uniforms.uHasClick.value = true; mesh.userData.targetEffectFactor = 1.0; }
+            }
+            updateCamera(idleStrength, idleVelocity) {
+                const rotDamping = 0.1;
+                // Apply rotation to RIG if using mouse, otherwise VR headset rotates camera naturally
+                if (idleStrength > 0) {
+                    this.targetYaw += idleVelocity.x * CONFIG.nav.idleRotSpeed * idleStrength;
+                    this.targetPitch += idleVelocity.y * CONFIG.nav.idleRotSpeed * idleStrength;
+                    this.targetPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, this.targetPitch));
+                }
+
+                this.currentYaw += (this.targetYaw - this.currentYaw) * rotDamping;
+                this.currentPitch += (this.targetPitch - this.currentPitch) * rotDamping;
+                
+                // CRITICAL FOR VR: We rotate/move the RIG, not the camera directly
+                this.rig.rotation.set(this.currentPitch, this.currentYaw, 0, 'YXZ');
+                
+                this.rig.position.x += (this.targetPosition.x - this.rig.position.x) * CONFIG.nav.damping;
+                this.rig.position.y += (this.targetPosition.y - this.rig.position.y) * CONFIG.nav.damping;
+                this.rig.position.z += (this.targetPosition.z - this.rig.position.z) * CONFIG.nav.damping;
+            }
+        }
+
+        const startTime = Date.now();
+
+        class App {
+            constructor() {
+                this.scene = new THREE.Scene();
+                this.scene.background = new THREE.Color(0x000000);
+                this.scene.fog = new THREE.Fog(0x000000, 100, 200);
+                
+                this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+                
+                // 4. VR SETUP: Create a Rig (Group)
+                this.cameraRig = new THREE.Group();
+                this.cameraRig.add(this.camera);
+                this.scene.add(this.cameraRig);
+
+                this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+                
+                // 5. ENABLE XR
+                this.renderer.xr.enabled = true;
+                document.body.appendChild(this.renderer.domElement);
+                document.body.appendChild(VRButton.createButton(this.renderer));
+
+                this.assetManager = new AssetManager();
+                this.world = new WorldBuilder(this.scene, this.assetManager);
+                this.input = new InputHandler(this.camera, this.cameraRig, this); // Pass Rig
+                this.breathSystem = new BreathController();
+                
+                this.lastInteractionTime = 0;
+                this.currentDriftSpeed = 0; this.currentVacuumSpeed = 0; this.accumulatedScatter = 0; this.currentAgnosia = 0; this.currentHeavyBlur = 0; this.attentionInfluence = 0;
+                this.activeMesh = null; this.idleRotationVelocity = new THREE.Vector2(); this.dummyObj = new THREE.Object3D();
+
+                this.init();
+            }
+
+            init() {
+                // Set initial position on Rig
+                this.cameraRig.position.set(0,0,100);
+                this.input.targetPosition.copy(this.cameraRig.position);
+                
+                // Turrell attached to camera (inside rig)
+                this.world.buildTurrell(this.camera);
+
+                this.assetManager.loadDefaults(() => {
+                    this.world.build();
+                    this.world.buildGhost();
+                });
+
+                window.addEventListener('resize', () => {
+                    this.camera.aspect = window.innerWidth / window.innerHeight;
+                    this.camera.updateProjectionMatrix();
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                });
+
+                this.resetIdle();
+                this.setupFolderLoader();
+                
+                // 6. START ANIMATION LOOP (XR Compatible)
+                this.renderer.setAnimationLoop(this.render.bind(this));
+            }
+
+            resetIdle() {
+                this.lastInteractionTime = (Date.now() - startTime) / 1000;
+                if (this.breathSystem.ghostActive) { this.breathSystem.ghostActive = false; if(this.world.ghostPlane) this.world.ghostPlane.visible = false; }
+                document.getElementById('breathGuide').style.opacity = 0;
+                this.idleRotationVelocity.set((Math.random() - 0.5) * 2.0, (Math.random() - 0.5) * 1.0);
+                this.activeMesh = null;
+            }
+
+            setupFolderLoader() {
+                const input = document.getElementById('folderInput'); const loading = document.getElementById('loadingMsg');
+                input.addEventListener('change', (e) => { if (e.target.files.length === 0) return; loading.style.display = 'block'; this.assetManager.loadFromFiles(e.target.files, () => { loading.style.display = 'none'; this.world.build(); if (this.world.ghostPlane) { this.world.ghostPlane.material = this.assetManager.getRandomMaterial().clone(); this.world.ghostPlane.material.uniforms.displacementStrength.value = 15.0; } }); });
+            }
+
+            triggerAttention(camera, structures) {
+                 const frustum = new THREE.Frustum(); const projScreenMatrix = new THREE.Matrix4();
+                 // Use camera for visibility check (head position)
+                 camera.updateMatrixWorld();
+                 projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+                 frustum.setFromProjectionMatrix(projScreenMatrix);
+                 let candidates = [];
+                 // Calc world pos for distance
+                 const camWorldPos = new THREE.Vector3();
+                 camera.getWorldPosition(camWorldPos);
+
+                 structures.forEach(child => { if (child.isMesh && frustum.containsPoint(child.position)) { const dist = child.position.distanceTo(camWorldPos); if (dist > 10 && dist < 150) candidates.push({ mesh: child, dist: dist }); } });
+                 candidates.sort((a, b) => a.dist - b.dist); const top5 = candidates.slice(0, 5); if (top5.length > 0) { this.activeMesh = top5[Math.floor(Math.random() * top5.length)].mesh; this.attentionInfluence = 0; }
+            }
+
+            updatePhysics(targetSpeeds, now) {
+                this.currentDriftSpeed += (targetSpeeds.drift - this.currentDriftSpeed) * CONFIG.physics.acceleration;
+                this.currentVacuumSpeed += (targetSpeeds.vacuum - this.currentVacuumSpeed) * CONFIG.physics.acceleration;
+                this.currentAgnosia += (targetSpeeds.agnosia - this.currentAgnosia) * 0.05;
+                this.currentHeavyBlur += (targetSpeeds.heavyBlur - this.currentHeavyBlur) * 0.05;
+                this.attentionInfluence += (targetSpeeds.attention - this.attentionInfluence) * 0.05;
+                if (this.activeMesh) this.attentionInfluence = 1; 
+                this.accumulatedScatter += this.currentDriftSpeed * CONFIG.physics.scatterSpeed;
+                const timeSinceInput = now - this.lastInteractionTime;
+                if (timeSinceInput < TIME_BREATH_START) { this.currentDriftSpeed *= 0.95; this.currentVacuumSpeed *= 0.95; this.accumulatedScatter *= 0.95; }
+
+                // Need camera world pos for shaders
+                const camWorldPos = new THREE.Vector3();
+                this.camera.getWorldPosition(camWorldPos);
+
+                this.world.structures.forEach((mesh) => {
+                    if (Math.abs(this.currentDriftSpeed) > 0.001 && mesh.userData.driftVec) { mesh.position.addScaledVector(mesh.userData.driftVec, this.currentDriftSpeed); }
+                    if (Math.abs(this.currentVacuumSpeed) > 0.0001) { const pushDir = mesh.position.clone().normalize(); if (pushDir.lengthSq() < 0.001) pushDir.set(0, 0, 1); mesh.position.addScaledVector(pushDir, this.currentVacuumSpeed); }
+                    if (this.accumulatedScatter > 0.001 && mesh.userData.originalPos) { mesh.position.addScaledVector(mesh.userData.driftVec, this.accumulatedScatter * 0.1); }
+                    if (mesh.userData.targetEffectFactor !== undefined) { let factor = mesh.material.uniforms.uEffectFactor.value; if (factor < mesh.userData.targetEffectFactor) { factor += CONFIG.effects.transitionSpeed; if (factor > mesh.userData.targetEffectFactor) factor = mesh.userData.targetEffectFactor; } mesh.material.uniforms.uEffectFactor.value = factor; }
+                    
+                    if (mesh.material.uniforms) {
+                        if (mesh.material.uniforms.cameraPos) { mesh.material.uniforms.cameraPos.value.copy(camWorldPos); }
+                        let val = 0; if (this.breathSystem.inhalePlanes.includes(mesh)) val = targetSpeeds.emissive;
+                        mesh.material.uniforms.uEmissiveStrength.value = val; mesh.material.uniforms.uBlurStrength.value = targetSpeeds.blur; mesh.material.uniforms.uAgnosiaStrength.value = this.currentAgnosia; mesh.material.uniforms.uHeavyBlur.value = this.currentHeavyBlur; mesh.material.uniforms.uTime.value = now;
+                    }
+                });
+
+                // Infinite world wrap logic - based on Rig position now
+                const b = CONFIG.world.size * 0.5;
+                const rigPos = this.cameraRig.position;
+                this.world.structures.forEach(s => {
+                    if (s.position.x - rigPos.x > b) s.position.x -= b * 2;
+                    if (s.position.x - rigPos.x < -b) s.position.x += b * 2;
+                    if (s.position.y - rigPos.y > b) s.position.y -= b * 2;
+                    if (s.position.y - rigPos.y < -b) s.position.y += b * 2;
+                    if (s.position.z - rigPos.z > b) s.position.z -= b * 2;
+                    if (s.position.z - rigPos.z < -b) s.position.z += b * 2;
+                });
+            }
+
+            render() { // Replaces animate()
+                const now = (Date.now() - startTime) / 1000;
+                const timeSinceInput = now - this.lastInteractionTime;
+                const targets = this.breathSystem.update(timeSinceInput, this.camera, this.world, { trigger: this.triggerAttention.bind(this), activeMesh: this.activeMesh });
+                this.updatePhysics(targets, now);
+
+                let idleStrength = 0;
+                if (timeSinceInput > CONFIG.timing.waitBeforeFloat) { const floatProgress = Math.min((timeSinceInput - CONFIG.timing.waitBeforeFloat) / 3.0, 1.0); idleStrength = floatProgress * floatProgress; }
+                this.input.updateCamera(idleStrength, this.idleRotationVelocity);
+
+                if (this.breathSystem.ghostActive && this.world.ghostPlane) {
+                    const progress = (now - this.breathSystem.ghostStartTime) / CONFIG.timing.ghostDuration;
+                    if (progress < 1.0) { this.world.ghostPlane.position.lerpVectors(this.breathSystem.ghostStartPos, this.breathSystem.ghostEndPos, progress); this.world.ghostPlane.position.addScaledVector(this.camera.up, Math.sin(progress * Math.PI * 4) * 2); } else { this.world.ghostPlane.visible = false; this.breathSystem.ghostActive = false; }
+                }
+
+                if (this.world.turrellPlane) {
+                    let targetOpacity = (timeSinceInput > TIME_VOID_START) ? 0.7 : 0.0;
+                    this.world.turrellPlane.material.uniforms.uOpacity.value += (targetOpacity - this.world.turrellPlane.material.uniforms.uOpacity.value) * 0.05;
+                    this.world.turrellPlane.material.uniforms.uTime.value = now;
+                }
+                
+                if (this.activeMesh && this.attentionInfluence > 0.001) {
+                      const meshWorldPos = new THREE.Vector3(); this.activeMesh.getWorldPosition(meshWorldPos);
+                      this.dummyObj.position.copy(meshWorldPos); 
+                      // Look at Camera (head) not rig
+                      const camWorldPos = new THREE.Vector3(); this.camera.getWorldPosition(camWorldPos);
+                      this.dummyObj.lookAt(camWorldPos); 
+                      const targetLocalQuat = this.dummyObj.quaternion.clone();
+                      if (this.activeMesh.parent) { const parentWorldQuat = new THREE.Quaternion(); this.activeMesh.parent.getWorldQuaternion(parentWorldQuat); const parentInv = parentWorldQuat.clone().invert(); targetLocalQuat.premultiply(parentInv); const moveDir = new THREE.Vector3().subVectors(camWorldPos, meshWorldPos).normalize(); moveDir.applyQuaternion(parentInv); this.activeMesh.position.addScaledVector(moveDir, 0.04); } 
+                      else { const moveDir = new THREE.Vector3().subVectors(camWorldPos, meshWorldPos).normalize(); this.activeMesh.position.addScaledVector(moveDir, 0.04); }
+                      this.activeMesh.quaternion.slerp(targetLocalQuat, 0.02);
+                }
+
+                this.renderer.render(this.scene, this.camera);
+            }
+        }
+        new App();
+    </script>
+</body>
+</html>
