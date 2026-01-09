@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>VR Controller</title>
+    <style>
+        body { 
+            background: #111; 
+            color: #fff; 
+            height: 100vh; 
+            margin: 0; 
+            display: flex; 
+            flex-direction: column;
+            align-items: center; 
+            justify-content: center; 
+            font-family: sans-serif; 
+            text-align: center;
+            touch-action: none; /* חשוב למובייל */
+        }
+        h1 { font-size: 20px; margin-bottom: 10px; }
+        p { color: #888; }
+        .zone {
+            width: 80%;
+            height: 50%;
+            border: 2px dashed #444;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #222;
+        }
+    </style>
+</head>
+<body>
+    <h1>שלט VR</h1>
+    <p>החלק את האצבע בתוך הריבוע</p>
+    <div class="zone" id="touchZone">
+        גע וגרור כאן
+    </div>
+
+    <script type="module">
+        // ייבוא הספריות שמתאימות לדפדפן (CDN)
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+        import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+
+        // --- המפתחות שלך כבר בפנים ---
+        const firebaseConfig = {
+          apiKey: "AIzaSyB-iga1GgW1ewAlF84Vkj-a2yYyxiqJczA",
+          authDomain: "olam-world-01.firebaseapp.com",
+          databaseURL: "https://olam-world-01-default-rtdb.europe-west1.firebasedatabase.app",
+          projectId: "olam-world-01",
+          storageBucket: "olam-world-01.firebasestorage.app",
+          messagingSenderId: "196076498428",
+          appId: "1:196076498428:web:f70508f91c01997b56d679",
+          measurementId: "G-DTE39LDYCP"
+        };
+
+        // הפעלת פיירבייס
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        const touchZone = document.getElementById('touchZone');
+
+        function handleMove(clientX) {
+            // חישוב המיקום היחסי (0 עד 1)
+            const x = clientX / window.innerWidth;
+            
+            // שליחה לענן
+            set(ref(db, 'vr-control/head'), { 
+                rotationY: x * 360 
+            });
+            
+            touchZone.innerText = "זז לזווית: " + Math.round(x * 360);
+        }
+
+        // תמיכה בעכבר מחשב
+        document.addEventListener('mousemove', (e) => {
+            if(e.buttons === 1) { // רק אם לוחצים וגוררים
+                handleMove(e.clientX);
+            }
+        });
+
+        // תמיכה בטלפון (Touch)
+        document.addEventListener('touchmove', (e) => {
+            e.preventDefault(); // מונע גלילה של המסך
+            handleMove(e.touches[0].clientX);
+        }, { passive: false });
+    </script>
+</body>
+</html>
