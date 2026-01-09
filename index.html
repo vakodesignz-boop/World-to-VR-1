@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>Bright Escher Matrix - VR Ready</title>
+    <title>Bright Escher Matrix - VR Remote Ready</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; user-select: none; }
         #folderInput { display: none; }
@@ -39,7 +39,27 @@
 
     <script type="module">
         import * as THREE from 'three';
-        import { VRButton } from 'three/addons/webxr/VRButton.js'; // 1. IMPORT VR BUTTON
+        import { VRButton } from 'three/addons/webxr/VRButton.js';
+        
+        // --- FIREBASE IMPORTS (הוספתי לך כאן) ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+        import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+
+        // --- FIREBASE CONFIG (הפרטים שלך כבר בפנים) ---
+        const firebaseConfig = {
+          apiKey: "AIzaSyB-iga1GgW1ewAlF84Vkj-a2yYyxiqJczA",
+          authDomain: "olam-world-01.firebaseapp.com",
+          databaseURL: "https://olam-world-01-default-rtdb.europe-west1.firebasedatabase.app",
+          projectId: "olam-world-01",
+          storageBucket: "olam-world-01.firebasestorage.app",
+          messagingSenderId: "196076498428",
+          appId: "1:196076498428:web:f70508f91c01997b56d679",
+          measurementId: "G-DTE39LDYCP"
+        };
+
+        // --- אתחול החיבור ---
+        const firebaseApp = initializeApp(firebaseConfig);
+        const db = getDatabase(firebaseApp);
 
         // ==========================================
         // 1. CONFIGURATION
@@ -447,7 +467,26 @@
                 this.currentDriftSpeed = 0; this.currentVacuumSpeed = 0; this.accumulatedScatter = 0; this.currentAgnosia = 0; this.currentHeavyBlur = 0; this.attentionInfluence = 0;
                 this.activeMesh = null; this.idleRotationVelocity = new THREE.Vector2(); this.dummyObj = new THREE.Object3D();
 
+                // --- חיבור לשלט של FIREBASE ---
+                this.initRemoteControl();
+
                 this.init();
+            }
+
+            initRemoteControl() {
+                // האזנה לשינויים מהשלט
+                const headRef = ref(db, 'vr-control/head');
+                onValue(headRef, (snapshot) => {
+                    const data = snapshot.val();
+                    if (data && this.input) {
+                        // מאפסים את ה-idle שלא יפריע
+                        this.resetIdle();
+                        // הופכים מעלות לרדיאנים ושולחים ל-InputHandler הקיים
+                        // המינוס הוא כי כשגוררים שמאלה רוצים להסתכל שמאלה
+                        const radians = data.rotationY * (Math.PI / 180);
+                        this.input.targetYaw = -radians; 
+                    }
+                });
             }
 
             init() {
