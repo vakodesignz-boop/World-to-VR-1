@@ -1,105 +1,230 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>VR Sanity Check</title>
+    <title>Bright Escher Matrix - 5 Images Test</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: monospace; color: white; }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', monospace; user-select: none; }
+        
+        /* Debug Console (On Screen) */
         #debug-console {
-            position: absolute; top: 10px; left: 10px; width: 300px; height: 400px;
-            background: rgba(255,0,0,0.2); pointer-events: none; overflow: hidden; z-index: 999;
+            position: absolute; top: 10px; left: 10px; width: 350px; max-height: 500px;
+            background: rgba(0, 0, 0, 0.8); color: #00ffcc; 
+            padding: 15px; border: 1px solid #333; overflow-y: auto; 
+            font-size: 14px; z-index: 9999; direction: ltr; text-align: left;
+        }
+        .log-error { color: #ff5555; }
+        .log-success { color: #55ff55; }
+
+        #start-btn {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            padding: 20px 50px; font-size: 24px; background: #000; color: #00ffcc;
+            border: 2px solid #00ffcc; border-radius: 50px; cursor: pointer; z-index: 1000;
+            display: none; /* Hidden until loaded */
         }
     </style>
 </head>
 <body>
-    <div id="debug-console">Debug Log:<br></div>
+
+    <div id="debug-console">Initializing System...<br></div>
+    <button id="start-btn">ENTER VR EXPERIENCE</button>
 
     <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-            }
-        }
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
     </script>
 
     <script type="module">
         import * as THREE from 'three';
         import { VRButton } from 'three/addons/webxr/VRButton.js';
+        import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 
-        // --- ON-SCREEN LOGGER (כדי שתראה שגיאות בתוך המשקפת) ---
-        function log(msg) {
-            const el = document.getElementById('debug-console');
-            el.innerHTML += msg + '<br>';
-            console.log(msg);
+        // --- LOGGER ---
+        const consoleEl = document.getElementById('debug-console');
+        function log(msg, type='neutral') {
+            const line = document.createElement('div');
+            line.textContent = `> ${msg}`;
+            if(type === 'error') line.className = 'log-error';
+            if(type === 'success') line.className = 'log-success';
+            consoleEl.appendChild(line);
+            consoleEl.scrollTop = consoleEl.scrollHeight;
         }
-        window.onerror = function(msg, url, line) {
-            log(`ERROR: ${msg} (Line: ${line})`);
+
+        // --- CONFIG ---
+        const CONFIG = {
+            assets: {
+                // רק 5 תמונות לבדיקה
+                textures: [
+                    './assets/textures/image1.jpg',
+                    './assets/textures/image2.jpg',
+                    './assets/textures/image3.jpg',
+                    './assets/textures/image4.jpg',
+                    './assets/textures/image5.jpg'
+                ]
+            },
+            world: { unitSize: 30, count: 40 }
         };
 
-        log("Starting App...");
+        class App {
+            constructor() {
+                this.scene = new THREE.Scene();
+                this.scene.background = new THREE.Color(0x000000); 
+                
+                this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+                this.dolly = new THREE.Group();
+                this.dolly.position.set(0, 0, 0); // Start at center
+                this.dolly.add(this.camera);
+                this.scene.add(this.dolly);
 
-        // 1. Scene Setup
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x111111); // אפור כהה
+                this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Optimize for Quest
+                this.renderer.xr.enabled = true;
+                document.body.appendChild(this.renderer.domElement);
+                document.body.appendChild(VRButton.createButton(this.renderer));
 
-        // 2. Camera & Dolly
-        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
-        const dolly = new THREE.Group();
-        dolly.position.set(0, 0, 5); // קצת אחורה
-        dolly.add(camera);
-        scene.add(dolly);
+                this.materials = [];
+                this.structures = [];
+                
+                // Add Controllers (To see hands)
+                this.setupControllers();
 
-        // 3. Renderer
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setPixelRatio(window.devicePixelRatio);
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.xr.enabled = true; // חשוב!
-        document.body.appendChild(renderer.domElement);
-        document.body.appendChild(VRButton.createButton(renderer));
+                // Start Loading
+                this.loadAssets();
+                
+                window.addEventListener('resize', () => {
+                    this.camera.aspect = window.innerWidth / window.innerHeight;
+                    this.camera.updateProjectionMatrix();
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                });
+            }
 
-        log("Renderer Created.");
+            setupControllers() {
+                const controllerModelFactory = new XRControllerModelFactory();
+                for (let i = 0; i < 2; i++) {
+                    const controller = this.renderer.xr.getController(i);
+                    this.dolly.add(controller); // Add to Dolly so they move with you
+                    
+                    const grip = this.renderer.xr.getControllerGrip(i);
+                    grip.add(controllerModelFactory.createControllerModel(grip));
+                    this.dolly.add(grip);
+                    
+                    // Simple movement logic on thumbstick
+                    controller.addEventListener('selectstart', () => {
+                        // Click to move forward slightly (Debug movement)
+                        const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.dolly.quaternion);
+                        this.dolly.position.addScaledVector(dir, 2.0);
+                    });
+                }
+            }
 
-        // 4. Test Object (Red Cube)
-        const geometry = new THREE.BoxGeometry(1, 1, 1);
-        const material = new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true });
-        const cube = new THREE.Mesh(geometry, material);
-        cube.position.set(0, 1.6, -2); // בגובה העיניים, 2 מטר מולך
-        scene.add(cube);
+            loadAssets() {
+                log(`Starting load: ${CONFIG.assets.textures.length} images...`);
+                let loadedCount = 0;
+                let errorCount = 0;
+                const loader = new THREE.TextureLoader();
 
-        log("Cube Added.");
+                if (CONFIG.assets.textures.length === 0) {
+                    this.buildWorld(); // Build even if empty
+                    return;
+                }
 
-        // 5. Floor (Reference)
-        const grid = new THREE.GridHelper(10, 10);
-        scene.add(grid);
+                CONFIG.assets.textures.forEach(url => {
+                    loader.load(
+                        url,
+                        (tex) => {
+                            tex.colorSpace = THREE.SRGBColorSpace;
+                            // Create Simple Material
+                            const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
+                            // Store original dimensions if available
+                            if(tex.image) {
+                                mat.userData.imgWidth = tex.image.width;
+                                mat.userData.imgHeight = tex.image.height;
+                            }
+                            this.materials.push(mat);
+                            
+                            loadedCount++;
+                            log(`Loaded: ${url.split('/').pop()}`, 'success');
+                            this.checkLoadStatus(loadedCount, errorCount);
+                        },
+                        undefined,
+                        (err) => {
+                            errorCount++;
+                            log(`ERROR: Could not load ${url}`, 'error');
+                            this.checkLoadStatus(loadedCount, errorCount);
+                        }
+                    );
+                });
+            }
 
-        // 6. Controllers (כדי לראות את הידיים)
-        const controller1 = renderer.xr.getController(0);
-        scene.add(controller1);
-        const controller2 = renderer.xr.getController(1);
-        scene.add(controller2);
+            checkLoadStatus(loaded, errors) {
+                const total = CONFIG.assets.textures.length;
+                if (loaded + errors === total) {
+                    log('------------------');
+                    log(`Done. Success: ${loaded}, Errors: ${errors}`);
+                    
+                    if (loaded > 0) {
+                        this.buildWorld();
+                        const btn = document.getElementById('start-btn');
+                        btn.style.display = 'block';
+                        btn.innerText = "READY - ENTER VR";
+                        // Start Loop
+                        this.renderer.setAnimationLoop(this.render.bind(this));
+                    } else {
+                        log('CRITICAL: No images loaded. Check filenames in GitHub.', 'error');
+                        // Build fallback world so you see something
+                        this.materials.push(new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true }));
+                        this.buildWorld();
+                        this.renderer.setAnimationLoop(this.render.bind(this));
+                    }
+                }
+            }
 
-        const handGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-1)]);
-        const line = new THREE.Line(handGeo);
-        line.scale.z = 5;
-        controller1.add(line.clone());
-        controller2.add(line.clone());
+            buildWorld() {
+                log('Building World...');
+                const geo = new THREE.PlaneGeometry(CONFIG.world.unitSize, CONFIG.world.unitSize);
+                
+                for (let i = 0; i < CONFIG.world.count; i++) {
+                    // Pick random material from loaded ones
+                    const mat = this.materials[Math.floor(Math.random() * this.materials.length)];
+                    const mesh = new THREE.Mesh(geo, mat);
 
-        // 7. Loop
-        renderer.setAnimationLoop(function () {
-            cube.rotation.x += 0.01;
-            cube.rotation.y += 0.01;
-            renderer.render(scene, camera);
-        });
+                    // Aspect Ratio Fix
+                    if (mat.userData.imgWidth && mat.userData.imgHeight) {
+                        const ar = mat.userData.imgWidth / mat.userData.imgHeight;
+                        if (ar >= 1) mesh.scale.set(1, 1 / ar, 1); 
+                        else mesh.scale.set(ar, 1, 1);
+                    }
 
-        log("Loop Started. Ready for VR.");
-        
-        window.addEventListener('resize', onWindowResize, false);
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+                    // Random Position around user
+                    mesh.position.set(
+                        (Math.random() - 0.5) * 200,
+                        (Math.random() - 0.5) * 200,
+                        (Math.random() - 0.5) * 200
+                    );
+                    
+                    // Random Rotation
+                    mesh.rotation.set(
+                        Math.random() * Math.PI,
+                        Math.random() * Math.PI,
+                        0
+                    );
+
+                    this.structures.push(mesh);
+                    this.scene.add(mesh);
+                }
+                log(`${this.structures.length} planes created.`, 'success');
+            }
+
+            render() {
+                // Slow rotation for effect
+                this.structures.forEach(mesh => {
+                    mesh.rotation.y += 0.002;
+                });
+                this.renderer.render(this.scene, this.camera);
+            }
         }
+
+        new App();
     </script>
 </body>
 </html>
