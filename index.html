@@ -219,23 +219,29 @@
             }
 
             createMaterial(texture) {
-                return new THREE.ShaderMaterial({
-                    uniforms: {
-                        map: { value: texture || new THREE.Texture() }, cameraPos: { value: new THREE.Vector3() },
-                        displacementStrength: { value: 7.0 }, displacementRange: { value: 50.0 }, uTime: { value: 0.0 },
-                        uClickedUV: { value: new THREE.Vector2(0.5, 0.5) }, uGeoStrength: { value: CONFIG.effects.distortion },
-                        uNoiseStrength: { value: CONFIG.effects.noise }, uTolerance: { value: CONFIG.effects.tolerance },
-                        uEffectFactor: { value: 0.0 }, uHasClick: { value: false }, uEmissiveStrength: { value: 0.0 },
-                        uBlurStrength: { value: 0.0 }, uAgnosiaStrength: { value: 0.0 }, uHeavyBlur: { value: 0.0 }
-                    },
-                    vertexShader: SHADERS.vertex, fragmentShader: SHADERS.fragment, side: THREE.DoubleSide
+                // בדיקת דיאגנוסטיקה: שימוש בחומר בסיסי כדי לוודא שהטקסטורות עובדות
+                // אם אתה רואה ריבועים לבנים/תמונות - הטקסטורה נטענה
+                // אם אתה רואה ריבועים ורודים (Wireframe) - הטקסטורה נכשלה
+                
+                if (!texture) {
+                    return new THREE.MeshBasicMaterial({ color: 0xff00ff, wireframe: true });
+                }
+
+                // הגדרות לטקסטורה כדי לוודא שהיא נראית
+                texture.colorSpace = THREE.SRGBColorSpace;
+                
+                // עבור וידאו - חייבים לוודא שהוא מתעדכן
+                if (texture.isVideoTexture) {
+                    texture.minFilter = THREE.LinearFilter;
+                    texture.magFilter = THREE.LinearFilter;
+                    texture.format = THREE.RGBAFormat;
+                }
+
+                return new THREE.MeshBasicMaterial({ 
+                    map: texture,
+                    side: THREE.DoubleSide
                 });
             }
-            getRandomMaterial() {
-                if (this.materials.length === 0) return new THREE.MeshBasicMaterial({ color: 0x333333, wireframe: true });
-                return this.materials[Math.floor(Math.random() * this.materials.length)];
-            }
-        }
 
         // --- SOUND MANAGER ---
         class SoundManager {
