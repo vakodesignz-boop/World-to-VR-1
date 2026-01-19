@@ -49,21 +49,47 @@
             consoleEl.scrollTop = consoleEl.scrollHeight;
         }
 
-        // --- CONFIG ---
         const CONFIG = {
             assets: {
-                // רק 5 תמונות לבדיקה
+                mainAudio: './assets/main.mp3',
+                heartAudio: './assets/heartbeat.mp3',
                 textures: [
-                    './assets/textures/image1.jpg',
-                    './assets/textures/image2.jpg',
-                    './assets/textures/image3.jpg',
-                    './assets/textures/image4.jpg',
-                    './assets/textures/image5.jpg'
+                    // שיניתי כאן ל-jpeg
+                    './assets/textures/image1.jpeg',
+                    './assets/textures/image2.jpeg',
+                    './assets/textures/image3.jpeg',
+                    './assets/textures/image4.jpeg',
+                    './assets/textures/image5.jpeg',
+                    './assets/textures/image6.jpeg',
+                    './assets/textures/image7.jpeg',
+                    './assets/textures/image8.jpeg',
+                    './assets/textures/image9.jpeg',
+                    './assets/textures/image10.jpeg',
+                    './assets/textures/image11.jpeg',
+                    
+                    // Videos (1-11) - נשאר mp4
+                    './assets/textures/video1.mp4',
+                    './assets/textures/video2.mp4',
+                    './assets/textures/video3.mp4',
+                    './assets/textures/video4.mp4',
+                    './assets/textures/video5.mp4',
+                    './assets/textures/video6.mp4',
+                    './assets/textures/video7.mp4',
+                    './assets/textures/video8.mp4',
+                    './assets/textures/video9.mp4',
+                    './assets/textures/video10.mp4',
+                    './assets/textures/video11.mp4'
                 ]
             },
-            world: { unitSize: 30, count: 40 }
+            // ... שאר ההגדרות נשארות אותו דבר
+            world: { size: 500, megaStructureCount: 60, unitSize: 30, density: 0.9 },
+            nav: { panSpeed: 0.3, zoomSpeed: 1.5, rotateSpeed: 0.004, damping: 0.05 },
+            timing: { multiplier: 1.0, uiCountSeconds: 4, waitBeforePassive: 5.0, totalCycles: 5, ghostDuration: 10.0 },
+            physics: { maxDrift: 0.15, baseVacuum: 0.02, acceleration: 0.02 },
+            effects: { maxEmissive: 0.9, maxHeavyBlur: 0.1, distortion: 3.0, noise: 0.5, tolerance: 0.15, transitionSpeed: 0.02 },
+            chaos: { graceDuration: 3.0, sensitivity: 3.0, unlockThreshold: 0.3, waitBeforeRecovery: 2.5, recoveryDuration: 6.5, maxAttackSpeed: 1.2 }
         };
-
+        
         class App {
             constructor() {
                 this.scene = new THREE.Scene();
