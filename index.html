@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>Bright Escher Matrix - VR Full Load</title>
+    <title>Bright Escher Matrix - BASIC TEST</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', monospace; user-select: none; }
         
@@ -23,7 +23,7 @@
         /* Debug Log */
         #debug-log {
             font-size: 12px; color: #aaa; margin-bottom: 20px; 
-            max-height: 200px; overflow-y: auto; width: 80%; border: 1px solid #333; padding: 10px; text-align: left;
+            max-height: 200px; overflow-y: auto; width: 80%; border: 1px solid #333; padding: 10px; text-align: left; direction: ltr;
         }
         .log-error { color: #ff5555; }
         .log-success { color: #55ff55; }
@@ -47,13 +47,12 @@
         .status-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
         .label { opacity: 0.7; margin-right: 10px; font-size: 12px; }
         .value { color: white; font-size: 14px; }
-        .active-state { color: #ff3333; }
     </style>
 </head>
 <body>
 
     <div id="start-overlay">
-        <h2>SYSTEM INITIALIZATION</h2>
+        <h2>BASIC MATERIAL TEST</h2>
         <div id="progress-container"><div id="progress-bar"></div></div>
         <div id="loading-text">Scanning assets...</div>
         <div id="debug-log"></div>
@@ -81,37 +80,21 @@
         import { VRButton } from 'three/addons/webxr/VRButton.js';
         import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 
-        // --- רשימת הקבצים המעודכנת ---
         const CONFIG = {
             assets: {
                 mainAudio: './assets/main.mp3',
                 heartAudio: './assets/heartbeat.mp3',
                 textures: [
                     // Images (1-11)
-                    './assets/textures/image1.jpg',
-                    './assets/textures/image2.jpg',
-                    './assets/textures/image3.jpg',
-                    './assets/textures/image4.jpg',
-                    './assets/textures/image5.jpg',
-                    './assets/textures/image6.jpg',
-                    './assets/textures/image7.jpg',
-                    './assets/textures/image8.jpg',
-                    './assets/textures/image9.jpg',
-                    './assets/textures/image10.jpg',
-                    './assets/textures/image11.jpg',
-                    
+                    './assets/textures/image1.jpg', './assets/textures/image2.jpg', './assets/textures/image3.jpg',
+                    './assets/textures/image4.jpg', './assets/textures/image5.jpg', './assets/textures/image6.jpg',
+                    './assets/textures/image7.jpg', './assets/textures/image8.jpg', './assets/textures/image9.jpg',
+                    './assets/textures/image10.jpg', './assets/textures/image11.jpg',
                     // Videos (1-11)
-                    './assets/textures/video1.mp4',
-                    './assets/textures/video2.mp4',
-                    './assets/textures/video3.mp4',
-                    './assets/textures/video4.mp4',
-                    './assets/textures/video5.mp4',
-                    './assets/textures/video6.mp4',
-                    './assets/textures/video7.mp4',
-                    './assets/textures/video8.mp4',
-                    './assets/textures/video9.mp4',
-                    './assets/textures/video10.mp4',
-                    './assets/textures/video11.mp4'
+                    './assets/textures/video1.mp4', './assets/textures/video2.mp4', './assets/textures/video3.mp4',
+                    './assets/textures/video4.mp4', './assets/textures/video5.mp4', './assets/textures/video6.mp4',
+                    './assets/textures/video7.mp4', './assets/textures/video8.mp4', './assets/textures/video9.mp4',
+                    './assets/textures/video10.mp4', './assets/textures/video11.mp4'
                 ]
             },
             world: { size: 500, megaStructureCount: 60, unitSize: 30, density: 0.9 },
@@ -142,18 +125,16 @@
             console.log(msg);
         }
 
-        // --- ASSET MANAGER (ROBUST) ---
+        // --- ASSET MANAGER (BASIC MATERIAL FIX) ---
         class AssetManager {
             constructor() { this.materials = []; }
             
             loadConfigAssets(onComplete) {
                 let loaded = 0; 
                 const total = CONFIG.assets.textures.length;
-                log(`Starting load of ${total} assets (Images & Videos)...`);
+                log(`Starting load of ${total} assets...`);
 
-                if (total === 0) {
-                    onComplete(); return;
-                }
+                if (total === 0) { onComplete(); return; }
 
                 CONFIG.assets.textures.forEach(url => {
                     const isVideo = url.endsWith('.mp4') || url.endsWith('.webm');
@@ -176,16 +157,15 @@
                         video.src = url; video.loop = true; video.muted = true; 
                         video.playsInline = true; video.crossOrigin = "anonymous";
                         
-                        // Fallback: If video takes too long (5s), skip it so app doesn't hang
-                        const timeout = setTimeout(() => {
-                            log(`TIMEOUT: ${fileName} (too heavy?)`, 'error');
-                            updateProgress(); 
-                        }, 5000); 
+                        const timeout = setTimeout(() => { log(`TIMEOUT: ${fileName}`, 'error'); updateProgress(); }, 5000); 
 
                         video.addEventListener('loadedmetadata', () => {
                             clearTimeout(timeout);
                             const tex = new THREE.VideoTexture(video);
-                            tex.colorSpace = THREE.SRGBColorSpace; tex.minFilter = THREE.LinearFilter;
+                            tex.colorSpace = THREE.SRGBColorSpace; 
+                            tex.minFilter = THREE.LinearFilter;
+                            tex.magFilter = THREE.LinearFilter;
+                            
                             const mat = this.createMaterial(tex);
                             mat.userData.imgWidth = video.videoWidth; mat.userData.imgHeight = video.videoHeight;
                             this.materials.push(mat);
@@ -196,11 +176,9 @@
                         video.addEventListener('error', (e) => {
                             clearTimeout(timeout);
                             log(`ERROR: ${fileName} not found/supported`, 'error');
-                            updateProgress(); // Count it anyway to avoid stall
+                            updateProgress(); 
                         });
-                        
                         video.load();
-
                     } else {
                         const loader = new THREE.TextureLoader();
                         loader.load(url, (tex) => {
@@ -218,30 +196,21 @@
                 });
             }
 
+            // --- THE FIX: SIMPLE MATERIAL ---
             createMaterial(texture) {
-                // בדיקת דיאגנוסטיקה: שימוש בחומר בסיסי כדי לוודא שהטקסטורות עובדות
-                // אם אתה רואה ריבועים לבנים/תמונות - הטקסטורה נטענה
-                // אם אתה רואה ריבועים ורודים (Wireframe) - הטקסטורה נכשלה
+                if (!texture) return new THREE.MeshBasicMaterial({ color: 0xff00ff, wireframe: true });
                 
-                if (!texture) {
-                    return new THREE.MeshBasicMaterial({ color: 0xff00ff, wireframe: true });
-                }
-
-                // הגדרות לטקסטורה כדי לוודא שהיא נראית
-                texture.colorSpace = THREE.SRGBColorSpace;
-                
-                // עבור וידאו - חייבים לוודא שהוא מתעדכן
-                if (texture.isVideoTexture) {
-                    texture.minFilter = THREE.LinearFilter;
-                    texture.magFilter = THREE.LinearFilter;
-                    texture.format = THREE.RGBAFormat;
-                }
-
                 return new THREE.MeshBasicMaterial({ 
                     map: texture,
                     side: THREE.DoubleSide
                 });
             }
+
+            getRandomMaterial() {
+                if (this.materials.length === 0) return new THREE.MeshBasicMaterial({ color: 0x333333, wireframe: true });
+                return this.materials[Math.floor(Math.random() * this.materials.length)];
+            }
+        }
 
         // --- SOUND MANAGER ---
         class SoundManager {
@@ -309,6 +278,7 @@
             update(chaosLevel) {
                 if (!this.isPlaying) return;
                 const now = this.audioContext.currentTime;
+                // Simplified audio logic for debug - just volume
                 const distFromCenter = Math.min(1, Math.abs(chaosLevel));
                 const targetHighFreq = 500 - (distFromCenter * 490); 
                 this.highpassNode.frequency.setTargetAtTime(Math.max(10, targetHighFreq), now, 0.1);
@@ -339,14 +309,6 @@
                 }
             }
         }
-
-        // --- SHADERS ---
-        const SHADERS = {
-            vertex: `uniform float displacementStrength; uniform float displacementRange; uniform vec3 cameraPos; uniform sampler2D map; varying vec2 vUv; varying float vDist; void main() { vUv = uv; vec4 worldPosition = modelMatrix * vec4(position, 1.0); float dist = distance(worldPosition.xyz, cameraPos); vDist = dist; vec4 texColor = texture2D(map, uv); float brightness = texColor.r * 0.3 + texColor.g * 0.59 + texColor.b * 0.11; float effectFactor = max(0.0, (displacementRange - dist) / displacementRange); effectFactor = pow(effectFactor, 2.0); vec3 newPosition = position + normal * brightness * displacementStrength * effectFactor; gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0); }`,
-            fragment: `uniform sampler2D map; uniform float uTime; uniform vec2 uClickedUV; uniform float uGeoStrength; uniform float uNoiseStrength; uniform float uEffectFactor; uniform float uTolerance; uniform bool uHasClick; uniform float uEmissiveStrength; uniform float uBlurStrength; uniform float uAgnosiaStrength; uniform float uHeavyBlur; varying vec2 vUv; varying float vDist; vec3 permute(vec3 x) { return mod(((x*34.0)+1.0)*x, 289.0); } float snoise(vec2 v) { const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439); vec2 i  = floor(v + dot(v, C.yy) ); vec2 x0 = v - i + dot(i, C.xx); vec2 i1; i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0); vec4 x12 = x0.xyxy + C.xxzz; x12.xy -= i1; i = mod(i, 289.0); vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 )); vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0); m = m*m ; m = m*m ; vec3 x = 2.0 * fract(p * C.www) - 1.0; vec3 h = abs(x) - 0.5; vec3 ox = floor(x + 0.5); vec3 a0 = x - ox; m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h ); vec3 g; g.x  = a0.x  * x0.x  + h.x  * x0.y; g.yz = a0.yz * x12.xz + h.yz * x12.yw; return 130.0 * dot(m, g); } vec2 complexWarp(vec2 uv, float strength, float time) { vec2 p = uv - 0.5; float r = length(p); float a = atan(p.y, p.x); float wave = sin(time * 0.2 + r * 4.0) * strength; float newA = a + (wave * r * 1.5); float newR = r * (1.0 + strength * 0.1 * sin(time * 0.15) * r); vec2 newP = vec2(cos(newA), sin(newA)) * newR; return newP + 0.5; } void main() { vec4 originalColor = texture2D(map, vUv); float finalMask = 0.0; if (uHasClick) { vec4 clickedColor = texture2D(map, uClickedUV); float distColor = distance(originalColor.rgb, clickedColor.rgb); finalMask = 1.0 - smoothstep(uTolerance, uTolerance + 0.05, distColor); finalMask *= uEffectFactor; } vec2 fluidUV = vUv; if (finalMask > 0.01) { float n = snoise(vUv * 4.0 + uTime * 0.1); fluidUV = vUv + vec2(n) * uNoiseStrength * 0.15 * finalMask; vec2 warpedUV = complexWarp(fluidUV, uGeoStrength * finalMask, uTime); fluidUV = mix(vUv, warpedUV, finalMask); } if (uAgnosiaStrength > 0.01) { float n = snoise(vUv * 4.0 + uTime * 0.1); vec2 warpedUV = complexWarp(vUv, 2.0, uTime); fluidUV = mix(fluidUV, warpedUV + vec2(n)*0.1, uAgnosiaStrength); } if (uBlurStrength > 0.0001) { float steamNoise = snoise(vUv * 80.0 + uTime * 0.5); fluidUV += vec2(steamNoise) * uBlurStrength; } vec4 distortedColor = texture2D(map, fluidUV); if (uHeavyBlur > 0.0001) { float off = uHeavyBlur * 5.0; vec4 sum = vec4(0.0); sum += texture2D(map, fluidUV) * 0.2; sum += texture2D(map, fluidUV + vec2(off, 0.0)) * 0.1; sum += texture2D(map, fluidUV - vec2(off, 0.0)) * 0.1; sum += texture2D(map, fluidUV + vec2(0.0, off)) * 0.1; sum += texture2D(map, fluidUV - vec2(0.0, off)) * 0.1; sum += texture2D(map, fluidUV + vec2(off, off)) * 0.1; sum += texture2D(map, fluidUV + vec2(-off, -off)) * 0.1; sum += texture2D(map, fluidUV + vec2(off, -off)) * 0.1; sum += texture2D(map, fluidUV + vec2(-off, off)) * 0.1; distortedColor = sum; } if (uEmissiveStrength > 0.001) { float lum = dot(distortedColor.rgb, vec3(0.299, 0.587, 0.114)); vec3 fireDark = vec3(0.8, 0.2, 0.0); vec3 fireLight = vec3(1.0, 0.8, 0.4); vec3 tint = mix(fireDark, fireLight, lum); distortedColor.rgb = mix(distortedColor.rgb, tint, uEmissiveStrength * 0.7); distortedColor.rgb += tint * (uEmissiveStrength * 1.5) * lum; } float fogStart = ${FOG_START.toFixed(1)}; float fogEnd = ${FOG_END.toFixed(1)}; float fogFactor = smoothstep(fogStart, fogEnd, vDist); fogFactor = max(0.0, fogFactor - (uEmissiveStrength * 1.2)); gl_FragColor = mix(distortedColor, vec4(0.0, 0.0, 0.0, 1.0), fogFactor); }`,
-            turrellVertex: `varying vec2 vUv; void main(){vUv=uv; gl_Position=projectionMatrix * modelViewMatrix * vec4(position, 1.0);}`,
-            turrellFragment: `uniform float uTime; uniform float uOpacity; varying vec2 vUv; void main(){ float t = uTime * 0.15; vec2 uv = vUv * 3.0; float b1 = length(uv - vec2(1.5 + sin(t*0.5) * 0.8, 1.5 + cos(t*0.3) * 0.8)); float b2 = length(uv - vec2(1.5 + cos(t*0.6) * 0.7, 1.5 + sin(t*0.4) * 0.9)); float b3 = length(uv - vec2(1.5 + sin(t*0.2 + 1.0) * 0.5, 1.5 + cos(t*0.5 + 2.0) * 0.5)); float blobs = (1.0 / b1) + (1.0 / b2) + (1.0 / b3); vec3 deepBlue = vec3(0.0, 0.05, 0.2); vec3 mediumBlue = vec3(0.0, 0.2, 0.6); vec3 brightBlue = vec3(0.1, 0.5, 1.0); float mask = smoothstep(2.5, 6.0, blobs); vec3 col = mix(deepBlue, mediumBlue, smoothstep(2.5, 4.0, blobs)); col = mix(col, brightBlue, smoothstep(4.0, 6.0, blobs)); gl_FragColor = vec4(col, uOpacity * mask); }`
-        };
 
         // --- CLASSES (World, State, Breath, Input) ---
         class WorldBuilder {
@@ -389,15 +351,13 @@
                 }
             }
             buildGhost() {
+                // Using basic material for ghost in test mode
                 const geo = new THREE.PlaneGeometry(CONFIG.world.unitSize * 1.5, CONFIG.world.unitSize * 1.5, 32, 32);
-                const mat = this.assetManager.getRandomMaterial().clone(); mat.uniforms.displacementStrength.value = 2.0; mat.uniforms.uEmissiveStrength.value = 1.0; mat.transparent = true; mat.opacity = 0.6; 
+                const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
                 this.ghostPlane = new THREE.Mesh(geo, mat); this.ghostPlane.visible = false; this.ghostPlane.userData.isGhost = true; this.scene.add(this.ghostPlane);
             }
             buildTurrell(camera) {
-                const geo = new THREE.PlaneGeometry(2000, 2000);
-                const mat = new THREE.ShaderMaterial({ uniforms: { uTime: { value: 0 }, uOpacity: { value: 0.0 } }, vertexShader: SHADERS.turrellVertex, fragmentShader: SHADERS.turrellFragment, transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending });
-                this.turrellPlane = new THREE.Mesh(geo, mat); this.turrellPlane.position.set(0, 0, -500); this.turrellPlane.renderOrder = -1;
-                camera.add(this.turrellPlane);
+               // Removed Turrell temporarily or use basic
             }
         }
 
@@ -425,13 +385,13 @@
         }
 
         class InputHandler {
-            constructor(dolly, camera, app, renderer) { this.dolly = dolly; this.camera = camera; this.app = app; this.renderer = renderer; this.targetYaw = 0; this.targetPitch = 0; this.targetPosition = new THREE.Vector3(0,0,100); this.targetRoll = 0; this.currentRoll = 0; this.currentYaw = 0; this.currentPitch = 0; this.isMouseDown = false; this.mouse = new THREE.Vector2(); this.lastMouse = {x:0, y:0}; this.startMouse = {x:0, y:0}; this.raycaster = new THREE.Raycaster(); this.inputMagnitude = 0; this.controllers = []; this.setupVRControllers(); this.initListeners(); }
+            constructor(dolly, camera, app, renderer) { this.dolly = dolly; this.camera = camera; this.app = app; this.renderer = renderer; this.targetYaw = 0; this.targetPitch = 0; this.targetPosition = new THREE.Vector3(0,0,0); this.targetRoll = 0; this.currentRoll = 0; this.currentYaw = 0; this.currentPitch = 0; this.isMouseDown = false; this.mouse = new THREE.Vector2(); this.lastMouse = {x:0, y:0}; this.startMouse = {x:0, y:0}; this.raycaster = new THREE.Raycaster(); this.inputMagnitude = 0; this.controllers = []; this.setupVRControllers(); this.initListeners(); }
             setupVRControllers() { const controllerModelFactory = new XRControllerModelFactory(); for (let i = 0; i < 2; i++) { const controller = this.renderer.xr.getController(i); controller.addEventListener('selectstart', (e) => this.handleVRClick(e.target)); this.dolly.add(controller); this.controllers.push(controller); const grip = this.renderer.xr.getControllerGrip(i); grip.add(controllerModelFactory.createControllerModel(grip)); this.dolly.add(grip); } }
-            handleVRClick(controller) { const tempMatrix = new THREE.Matrix4(); tempMatrix.identity().extractRotation(controller.matrixWorld); this.raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld); this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix); const intersects = this.raycaster.intersectObjects(this.app.world.structures); if (intersects.length > 0) { const intersect = intersects[0]; const mesh = intersect.object; if (!mesh.userData.isUniqueMaterial) { mesh.material = mesh.material.clone(); mesh.userData.isUniqueMaterial = true; } mesh.material.uniforms.uClickedUV.value.copy(intersect.uv); mesh.material.uniforms.uHasClick.value = true; mesh.userData.targetEffectFactor = 1.0; this.inputMagnitude += 0.5; } }
+            handleVRClick(controller) { const tempMatrix = new THREE.Matrix4(); tempMatrix.identity().extractRotation(controller.matrixWorld); this.raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld); this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix); const intersects = this.raycaster.intersectObjects(this.app.world.structures); if (intersects.length > 0) { const intersect = intersects[0]; const mesh = intersect.object; if (!mesh.userData.isUniqueMaterial) { mesh.material = mesh.material.clone(); mesh.userData.isUniqueMaterial = true; } mesh.userData.targetEffectFactor = 1.0; this.inputMagnitude += 0.5; } }
             handleVRInput() { const session = this.renderer.xr.getSession(); if (!session) return; if (session.inputSources) { for (const source of session.inputSources) { if (source.gamepad) { const gp = source.gamepad; const stickX = gp.axes[2] || 0; const stickY = gp.axes[3] || 0; if (source.handedness === 'left') { if (Math.abs(stickX) > 0.1 || Math.abs(stickY) > 0.1) { const rotMatrix = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(0, this.targetYaw, 0, 'YXZ')); const forward = new THREE.Vector3(0, 0, -1).applyMatrix4(rotMatrix); const right = new THREE.Vector3(1, 0, 0).applyMatrix4(rotMatrix); this.targetPosition.addScaledVector(forward, -stickY * CONFIG.nav.zoomSpeed * 2); this.targetPosition.addScaledVector(right, stickX * CONFIG.nav.panSpeed * 2); } } if (source.handedness === 'right') { if (Math.abs(stickX) > 0.1 || Math.abs(stickY) > 0.1) { this.targetYaw -= stickX * CONFIG.nav.rotateSpeed * 10; const movement = Math.hypot(stickX, stickY); this.inputMagnitude += movement * 0.02; } } } } } }
             initListeners() { document.addEventListener('wheel', (e) => { e.preventDefault(); this.inputMagnitude += 0.1; this.onScroll(e); }, { passive: false }); document.addEventListener('mousedown', (e) => { if (e.target.id.includes('VRButton') || e.target.id.includes('start')) return; e.preventDefault(); this.inputMagnitude += 0.1; this.isMouseDown = true; this.startMouse = {x: e.clientX, y: e.clientY}; this.lastMouse = {x: e.clientX, y: e.clientY}; }); document.addEventListener('mouseup', (e) => { this.isMouseDown = false; const dist = Math.hypot(e.clientX - this.startMouse.x, e.clientY - this.startMouse.y); if (dist < 5) this.handleClick(e); }); document.addEventListener('mousemove', (e) => { if (!this.isMouseDown) return; const dx = e.clientX - this.lastMouse.x; const dy = e.clientY - this.lastMouse.y; this.lastMouse = {x: e.clientX, y: e.clientY}; this.inputMagnitude += Math.hypot(dx, dy) * 0.005; this.targetYaw += dx * CONFIG.nav.rotateSpeed; this.targetPitch += dy * CONFIG.nav.rotateSpeed; this.targetPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, this.targetPitch)); }); }
             onScroll(e) { const z = e.ctrlKey || e.metaKey; const rotMatrix = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(this.targetPitch, this.targetYaw, 0, 'YXZ')); const forward = new THREE.Vector3(0,0,-1).applyMatrix4(rotMatrix); if (z) { this.targetPosition.addScaledVector(forward, -Math.sign(e.deltaY) * CONFIG.nav.zoomSpeed * 5); } }
-            handleClick(event) { this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1; this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1; this.raycaster.setFromCamera(this.mouse, this.camera); const intersects = this.raycaster.intersectObjects(this.app.world.structures); if (intersects.length > 0) { const intersect = intersects[0]; const mesh = intersect.object; if (!mesh.userData.isUniqueMaterial) { mesh.material = mesh.material.clone(); mesh.userData.isUniqueMaterial = true; } mesh.material.uniforms.uClickedUV.value.copy(intersect.uv); mesh.material.uniforms.uHasClick.value = true; mesh.userData.targetEffectFactor = 1.0; } }
+            handleClick(event) { this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1; this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1; this.raycaster.setFromCamera(this.mouse, this.camera); const intersects = this.raycaster.intersectObjects(this.app.world.structures); if (intersects.length > 0) { const intersect = intersects[0]; const mesh = intersect.object; if (!mesh.userData.isUniqueMaterial) { mesh.material = mesh.material.clone(); mesh.userData.isUniqueMaterial = true; } mesh.userData.targetEffectFactor = 1.0; } }
             updateCamera(chaosLevel, now, state, timeInPassive) { const isVR = this.renderer.xr.isPresenting; const targetObj = isVR ? this.dolly : this.camera; if (isVR) this.handleVRInput(); const rotDamping = 0.05; if (state === 'PASSIVE') { const rampDuration = FULL_CYCLE_DURATION * 3.0; const rampUp = Math.min(timeInPassive / rampDuration, 1.0); const smoothFactor = rampUp * rampUp * (3 - 2 * rampUp); this.targetYaw += (Math.sin(now * 0.2) + Math.cos(now * 0.15)) * 0.0008 * smoothFactor; const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(targetObj.quaternion); this.targetPosition.addScaledVector(forward, 0.05 * smoothFactor); } if (state !== 'PASSIVE' && chaosLevel > 0.0) { const wanderStrength = chaosLevel; const panX = Math.sin(now * 0.8) * wanderStrength * 1.5 + Math.cos(now * 2.5) * wanderStrength * 0.5; const panY = Math.cos(now * 0.7) * wanderStrength * 1.2; this.targetYaw += panX * 0.02; if (!isVR) this.targetPitch += panY * 0.02; const zoomDrift = Math.sin(now * 0.3) * wanderStrength * 0.5; const forward = new THREE.Vector3(0,0,-1).applyQuaternion(targetObj.quaternion); this.targetPosition.addScaledVector(forward, zoomDrift); } if (chaosLevel > 0.8) { const panicProgress = (chaosLevel - 0.8) / 0.2; const intensity = Math.pow(panicProgress, 2) * 2.0; const shakeX = (Math.random() - 0.5) * intensity * 5.0; const shakeY = (Math.random() - 0.5) * intensity * 5.0; const shakeZ = (Math.random() - 0.5) * intensity * 5.0; this.targetPosition.add(new THREE.Vector3(shakeX, shakeY, shakeZ)); this.targetYaw += (Math.random() - 0.5) * intensity * 0.1; if(!isVR) this.targetPitch += (Math.random() - 0.5) * intensity * 0.1; this.targetRoll = (Math.random() - 0.5) * intensity * 0.2; } this.currentYaw += (this.targetYaw - this.currentYaw) * rotDamping; this.currentPitch += (this.targetPitch - this.currentPitch) * rotDamping; targetObj.rotation.set(this.currentPitch, this.currentYaw, 0, 'YXZ'); targetObj.position.x += (this.targetPosition.x - targetObj.position.x) * CONFIG.nav.damping; targetObj.position.y += (this.targetPosition.y - targetObj.position.y) * CONFIG.nav.damping; targetObj.position.z += (this.targetPosition.z - targetObj.position.z) * CONFIG.nav.damping; }
             getAndResetInput() { const val = this.inputMagnitude; this.inputMagnitude = 0; return val; }
         }
@@ -440,7 +400,8 @@
 
         class App {
             constructor() {
-                this.scene = new THREE.Scene(); this.scene.background = new THREE.Color(0x000000); this.scene.fog = new THREE.Fog(0x000000, FOG_START, FOG_END);
+                this.scene = new THREE.Scene(); this.scene.background = new THREE.Color(0x000000); 
+                // this.scene.fog = new THREE.Fog(0x000000, FOG_START, FOG_END); // FOG DISABLED
                 this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
                 this.dolly = new THREE.Group(); this.dolly.add(this.camera); this.scene.add(this.dolly);
                 this.renderer = new THREE.WebGLRenderer({ antialias: true }); this.renderer.setSize(window.innerWidth, window.innerHeight); this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); this.renderer.xr.enabled = true; 
@@ -463,7 +424,9 @@
                 });
             }
             init() {
-                this.dolly.position.set(0,0,100); this.input.targetPosition.copy(this.dolly.position);
+                // FIXED: Camera starts at center
+                this.dolly.position.set(0,0,0); 
+                this.input.targetPosition.copy(this.dolly.position);
                 this.world.buildTurrell(this.camera); this.world.build(); this.world.buildGhost();
                 window.addEventListener('resize', () => { this.camera.aspect = window.innerWidth / window.innerHeight; this.camera.updateProjectionMatrix(); this.renderer.setSize(window.innerWidth, window.innerHeight); });
                 this.renderer.setAnimationLoop(this.render.bind(this));
@@ -480,7 +443,7 @@
                 let targets = { drift: 0, vacuum: 0, agnosia: 0, heavyBlur: 0, emissive: 0, blur: 0, attention: 0, turrellOpacity: 0 };
                 if (currentState === 'PASSIVE') { if (this.passiveStartTime === 0) this.passiveStartTime = now; targets = this.breathSystem.update(now - this.passiveStartTime, this.camera, this.world, { trigger: this.triggerAttention.bind(this), activeMesh: this.activeMesh }); } else { this.passiveStartTime = 0; this.breathSystem.reset(); this.activeMesh = null; if (currentState === 'WAKING') { targets.vacuum = -0.05; targets.drift = 0.05; } else if (currentState === 'ACTIVE' || currentState === 'RECOVERING') { targets.drift = 0; } else { targets.drift = 0.03; } }
                 this.currentDriftSpeed += (targets.drift - this.currentDriftSpeed) * CONFIG.physics.acceleration; this.currentVacuumSpeed += (targets.vacuum - this.currentVacuumSpeed) * CONFIG.physics.acceleration; this.currentAgnosia += (targets.agnosia - this.currentAgnosia) * 0.05; this.currentHeavyBlur += (targets.heavyBlur - this.currentHeavyBlur) * 0.05; this.attentionInfluence += (targets.attention - this.attentionInfluence) * 0.05;
-                this.world.structures.forEach((mesh) => { if (Math.abs(this.currentDriftSpeed) > 0.001 && mesh.userData.driftVec) mesh.position.addScaledVector(mesh.userData.driftVec, this.currentDriftSpeed); if (Math.abs(this.currentVacuumSpeed) > 0.0001) { const pushDir = mesh.position.clone().normalize(); if (pushDir.lengthSq() < 0.001) pushDir.set(0, 0, 1); mesh.position.addScaledVector(pushDir, this.currentVacuumSpeed); } if (this.accumulatedScatter > 0.001 && mesh.userData.originalPos) { mesh.position.addScaledVector(mesh.userData.driftVec, this.accumulatedScatter * 0.1); } let activeMove = new THREE.Vector3(0,0,0); if ((currentState === 'ACTIVE' || currentState === 'RECOVERING') && chaosLevel > 0) { const personalThreshold = 0.3 + (mesh.id % 30) * 0.01; if (chaosLevel > personalThreshold) { let lookIntensity = Math.min((chaosLevel - personalThreshold) / 0.2, 1.0); const dummy = new THREE.Object3D(); dummy.position.copy(mesh.position); dummy.lookAt(this.dolly.position); mesh.quaternion.slerp(dummy.quaternion, 0.03 * lookIntensity); } else { mesh.quaternion.slerp(mesh.userData.originalRot, 0.05); } if (chaosLevel > 0.61) { const swarmIntensity = (chaosLevel - 0.61) / 0.39; const speed = swarmIntensity * CONFIG.chaos.maxAttackSpeed * 2.0; let swarmDir = mesh.userData.driftVec.clone(); swarmDir.x += Math.sin(now * 2.0 + mesh.id) * 0.5; swarmDir.y += Math.cos(now * 1.5 + mesh.id) * 0.5; swarmDir.normalize(); const vecToCam = new THREE.Vector3().subVectors(this.dolly.position, mesh.position).normalize(); swarmDir.addScaledVector(vecToCam, 0.2).normalize(); activeMove = swarmDir.multiplyScalar(speed); const dist = mesh.position.distanceTo(this.dolly.position); if (dist > CONFIG.world.size * 1.2) { const respawnPos = new THREE.Vector3((Math.random()-0.5)*CONFIG.world.size, (Math.random()-0.5)*CONFIG.world.size, (Math.random()-0.5)*CONFIG.world.size); mesh.position.copy(this.dolly.position).add(respawnPos); } } } else if (currentState === 'NEUTRAL') { mesh.quaternion.slerp(mesh.userData.originalRot, 0.02); } mesh.position.add(activeMove); if (mesh.userData.targetEffectFactor !== undefined) { let factor = mesh.material.uniforms.uEffectFactor.value; if (factor < mesh.userData.targetEffectFactor) { factor += CONFIG.effects.transitionSpeed; if (factor > mesh.userData.targetEffectFactor) factor = mesh.userData.targetEffectFactor; } mesh.material.uniforms.uEffectFactor.value = factor; } if (mesh.material.uniforms) { if (mesh.material.uniforms.cameraPos) { mesh.material.uniforms.cameraPos.value.copy(this.dolly.position); } mesh.material.uniforms.uEmissiveStrength.value = targets.emissive; mesh.material.uniforms.uBlurStrength.value = targets.blur; mesh.material.uniforms.uAgnosiaStrength.value = this.currentAgnosia; mesh.material.uniforms.uHeavyBlur.value = this.currentHeavyBlur; mesh.material.uniforms.uTime.value = now; } });
+                this.world.structures.forEach((mesh) => { if (Math.abs(this.currentDriftSpeed) > 0.001 && mesh.userData.driftVec) mesh.position.addScaledVector(mesh.userData.driftVec, this.currentDriftSpeed); if (Math.abs(this.currentVacuumSpeed) > 0.0001) { const pushDir = mesh.position.clone().normalize(); if (pushDir.lengthSq() < 0.001) pushDir.set(0, 0, 1); mesh.position.addScaledVector(pushDir, this.currentVacuumSpeed); } if (this.accumulatedScatter > 0.001 && mesh.userData.originalPos) { mesh.position.addScaledVector(mesh.userData.driftVec, this.accumulatedScatter * 0.1); } let activeMove = new THREE.Vector3(0,0,0); if ((currentState === 'ACTIVE' || currentState === 'RECOVERING') && chaosLevel > 0) { const personalThreshold = 0.3 + (mesh.id % 30) * 0.01; if (chaosLevel > personalThreshold) { let lookIntensity = Math.min((chaosLevel - personalThreshold) / 0.2, 1.0); const dummy = new THREE.Object3D(); dummy.position.copy(mesh.position); dummy.lookAt(this.dolly.position); mesh.quaternion.slerp(dummy.quaternion, 0.03 * lookIntensity); } else { mesh.quaternion.slerp(mesh.userData.originalRot, 0.05); } if (chaosLevel > 0.61) { const swarmIntensity = (chaosLevel - 0.61) / 0.39; const speed = swarmIntensity * CONFIG.chaos.maxAttackSpeed * 2.0; let swarmDir = mesh.userData.driftVec.clone(); swarmDir.x += Math.sin(now * 2.0 + mesh.id) * 0.5; swarmDir.y += Math.cos(now * 1.5 + mesh.id) * 0.5; swarmDir.normalize(); const vecToCam = new THREE.Vector3().subVectors(this.dolly.position, mesh.position).normalize(); swarmDir.addScaledVector(vecToCam, 0.2).normalize(); activeMove = swarmDir.multiplyScalar(speed); const dist = mesh.position.distanceTo(this.dolly.position); if (dist > CONFIG.world.size * 1.2) { const respawnPos = new THREE.Vector3((Math.random()-0.5)*CONFIG.world.size, (Math.random()-0.5)*CONFIG.world.size, (Math.random()-0.5)*CONFIG.world.size); mesh.position.copy(this.dolly.position).add(respawnPos); } } } else if (currentState === 'NEUTRAL') { mesh.quaternion.slerp(mesh.userData.originalRot, 0.02); } mesh.position.add(activeMove); });
                 if (chaosLevel < 0.3) { const b = CONFIG.world.size * 0.5; this.world.structures.forEach(s => { if (s.position.x - this.dolly.position.x > b) s.position.x -= b * 2; if (s.position.x - this.dolly.position.x < -b) s.position.x += b * 2; if (s.position.y - this.dolly.position.y > b) s.position.y -= b * 2; if (s.position.y - this.dolly.position.y < -b) s.position.y += b * 2; if (s.position.z - this.dolly.position.z > b) s.position.z -= b * 2; if (s.position.z - this.dolly.position.z < -b) s.position.z += b * 2; }); }
                 this.input.updateCamera(chaosLevel, now, currentState, timeInPassive);
                 if (this.breathSystem.ghostActive && this.world.ghostPlane) { const progress = (now - this.breathSystem.ghostStartTime) / CONFIG.timing.ghostDuration; if (progress < 1.0) { this.world.ghostPlane.position.lerpVectors(this.breathSystem.ghostStartPos, this.breathSystem.ghostEndPos, progress); this.world.ghostPlane.position.addScaledVector(this.camera.up, Math.sin(progress * Math.PI * 4) * 2); } else { this.world.ghostPlane.visible = false; this.breathSystem.ghostActive = false; } }
