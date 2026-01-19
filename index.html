@@ -2,32 +2,29 @@
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>Bright Escher Matrix - 5 Images Test</title>
+    <title>Bright Escher Matrix - EMERGENCY MODE</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', monospace; user-select: none; }
-        
-        /* Debug Console (On Screen) */
         #debug-console {
-            position: absolute; top: 10px; left: 10px; width: 350px; max-height: 500px;
-            background: rgba(0, 0, 0, 0.8); color: #00ffcc; 
-            padding: 15px; border: 1px solid #333; overflow-y: auto; 
-            font-size: 14px; z-index: 9999; direction: ltr; text-align: left;
+            position: absolute; top: 10px; left: 10px; width: 400px; max-height: 90vh;
+            background: rgba(0,0,0,0.85); color: #00ffcc; border: 1px solid #333;
+            padding: 10px; overflow-y: auto; font-size: 12px; z-index: 9999; direction: ltr; text-align: left;
         }
-        .log-error { color: #ff5555; }
+        .log-error { color: #ff5555; font-weight: bold; }
         .log-success { color: #55ff55; }
-
+        .log-warn { color: #ffff55; }
         #start-btn {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            padding: 20px 50px; font-size: 24px; background: #000; color: #00ffcc;
-            border: 2px solid #00ffcc; border-radius: 50px; cursor: pointer; z-index: 1000;
-            display: none; /* Hidden until loaded */
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            padding: 20px 60px; font-size: 24px; background: #00ffcc; color: black;
+            border: none; border-radius: 50px; cursor: pointer; z-index: 10000; font-weight: bold;
+            display: none; box-shadow: 0 0 20px #00ffcc;
         }
     </style>
 </head>
 <body>
 
     <div id="debug-console">Initializing System...<br></div>
-    <button id="start-btn">ENTER VR EXPERIENCE</button>
+    <button id="start-btn">ENTER VR</button>
 
     <script type="importmap">
         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
@@ -38,6 +35,24 @@
         import { VRButton } from 'three/addons/webxr/VRButton.js';
         import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 
+        // --- קונפיגורציה מתוקנת ---
+        const CONFIG = {
+            assets: {
+                mainAudio: './assets/main.mp3',
+                heartAudio: './assets/heartbeat.mp3',
+                textures: [
+                    // וודא שמות מדוייקים! (ללא רווחים, jpg או jpeg)
+                    './assets/textures/image1.jpg',
+                    './assets/textures/image2.jpg',
+                    './assets/textures/image3.jpg',
+                    './assets/textures/image4.jpg',
+                    './assets/textures/image5.jpg'
+                ]
+            },
+            // שיניתי את הצפיפות ל-0.1 (מדלג רק על 10%) כדי שיהיו הרבה אובייקטים
+            world: { size: 400, megaStructureCount: 40, unitSize: 40, density: 0.1 }
+        };
+
         // --- LOGGER ---
         const consoleEl = document.getElementById('debug-console');
         function log(msg, type='neutral') {
@@ -45,193 +60,206 @@
             line.textContent = `> ${msg}`;
             if(type === 'error') line.className = 'log-error';
             if(type === 'success') line.className = 'log-success';
+            if(type === 'warn') line.className = 'log-warn';
             consoleEl.appendChild(line);
             consoleEl.scrollTop = consoleEl.scrollHeight;
         }
 
-        const CONFIG = {
-            assets: {
-                mainAudio: './assets/main.mp3',
-                heartAudio: './assets/heartbeat.mp3',
-                textures: [
-                    // שיניתי כאן ל-jpeg
-                    './assets/textures/image1.jpeg',
-                    './assets/textures/image2.jpeg',
-                    './assets/textures/image3.jpeg',
-                    './assets/textures/image4.jpeg',
-                    './assets/textures/image5.jpeg',
-                    './assets/textures/image6.jpeg',
-                    './assets/textures/image7.jpeg',
-                    './assets/textures/image8.jpeg',
-                    './assets/textures/image9.jpeg',
-                    './assets/textures/image10.jpeg',
-                ]
-            },
-            // ... שאר ההגדרות נשארות אותו דבר
-            world: { size: 500, megaStructureCount: 60, unitSize: 30, density: 0.9 },
-            nav: { panSpeed: 0.3, zoomSpeed: 1.5, rotateSpeed: 0.004, damping: 0.05 },
-            timing: { multiplier: 1.0, uiCountSeconds: 4, waitBeforePassive: 5.0, totalCycles: 5, ghostDuration: 10.0 },
-            physics: { maxDrift: 0.15, baseVacuum: 0.02, acceleration: 0.02 },
-            effects: { maxEmissive: 0.9, maxHeavyBlur: 0.1, distortion: 3.0, noise: 0.5, tolerance: 0.15, transitionSpeed: 0.02 },
-            chaos: { graceDuration: 3.0, sensitivity: 3.0, unlockThreshold: 0.3, waitBeforeRecovery: 2.5, recoveryDuration: 6.5, maxAttackSpeed: 1.2 }
-        };
-        
-        class App {
-            constructor() {
-                this.scene = new THREE.Scene();
-                this.scene.background = new THREE.Color(0x000000); 
-                
-                this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-                this.dolly = new THREE.Group();
-                this.dolly.position.set(0, 0, 0); // Start at center
-                this.dolly.add(this.camera);
-                this.scene.add(this.dolly);
-
-                this.renderer = new THREE.WebGLRenderer({ antialias: true });
-                this.renderer.setSize(window.innerWidth, window.innerHeight);
-                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Optimize for Quest
-                this.renderer.xr.enabled = true;
-                document.body.appendChild(this.renderer.domElement);
-                document.body.appendChild(VRButton.createButton(this.renderer));
-
-                this.materials = [];
-                this.structures = [];
-                
-                // Add Controllers (To see hands)
-                this.setupControllers();
-
-                // Start Loading
-                this.loadAssets();
-                
-                window.addEventListener('resize', () => {
-                    this.camera.aspect = window.innerWidth / window.innerHeight;
-                    this.camera.updateProjectionMatrix();
-                    this.renderer.setSize(window.innerWidth, window.innerHeight);
-                });
+        class AssetManager {
+            constructor() { 
+                this.materials = []; 
+                // חומר ברירת מחדל כדי שתמיד יהיה משהו
+                this.defaultMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true });
             }
+            
+            loadConfigAssets(onComplete) {
+                let processed = 0;
+                const total = CONFIG.assets.textures.length;
+                log(`AssetManager: Attempting to load ${total} textures...`);
 
-            setupControllers() {
-                const controllerModelFactory = new XRControllerModelFactory();
-                for (let i = 0; i < 2; i++) {
-                    const controller = this.renderer.xr.getController(i);
-                    this.dolly.add(controller); // Add to Dolly so they move with you
-                    
-                    const grip = this.renderer.xr.getControllerGrip(i);
-                    grip.add(controllerModelFactory.createControllerModel(grip));
-                    this.dolly.add(grip);
-                    
-                    // Simple movement logic on thumbstick
-                    controller.addEventListener('selectstart', () => {
-                        // Click to move forward slightly (Debug movement)
-                        const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.dolly.quaternion);
-                        this.dolly.position.addScaledVector(dir, 2.0);
-                    });
-                }
-            }
-
-            loadAssets() {
-                log(`Starting load: ${CONFIG.assets.textures.length} images...`);
-                let loadedCount = 0;
-                let errorCount = 0;
-                const loader = new THREE.TextureLoader();
-
-                if (CONFIG.assets.textures.length === 0) {
-                    this.buildWorld(); // Build even if empty
+                if (total === 0) {
+                    log("Warning: No textures in list. Using defaults.", 'warn');
+                    this.materials.push(this.defaultMat);
+                    onComplete(); 
                     return;
                 }
 
+                // Timeout כללי - אם הכל נתקע, שחרר אחרי 3 שניות
+                const masterTimeout = setTimeout(() => {
+                    log("CRITICAL TIMEOUT: Force starting...", 'error');
+                    if (this.materials.length === 0) this.materials.push(this.defaultMat);
+                    onComplete();
+                }, 8000);
+
+                const checkDone = () => {
+                    processed++;
+                    log(`Progress: ${processed}/${total}`);
+                    if (processed === total) {
+                        clearTimeout(masterTimeout);
+                        if (this.materials.length === 0) {
+                            log("No textures loaded! Using Wireframe.", 'error');
+                            this.materials.push(this.defaultMat);
+                        } else {
+                            log(`Success: ${this.materials.length} materials ready.`, 'success');
+                        }
+                        onComplete();
+                    }
+                };
+
+                const loader = new THREE.TextureLoader();
                 CONFIG.assets.textures.forEach(url => {
                     loader.load(
                         url,
                         (tex) => {
                             tex.colorSpace = THREE.SRGBColorSpace;
-                            // Create Simple Material
+                            // שימוש בחומר בסיסי כדי למנוע בעיות תאורה
                             const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
-                            // Store original dimensions if available
-                            if(tex.image) {
-                                mat.userData.imgWidth = tex.image.width;
-                                mat.userData.imgHeight = tex.image.height;
-                            }
+                            if(tex.image) { mat.userData.imgWidth = tex.image.width; mat.userData.imgHeight = tex.image.height; }
                             this.materials.push(mat);
-                            
-                            loadedCount++;
                             log(`Loaded: ${url.split('/').pop()}`, 'success');
-                            this.checkLoadStatus(loadedCount, errorCount);
+                            checkDone();
                         },
                         undefined,
                         (err) => {
-                            errorCount++;
-                            log(`ERROR: Could not load ${url}`, 'error');
-                            this.checkLoadStatus(loadedCount, errorCount);
+                            log(`FAILED: ${url} (Check Name/JPG vs JPEG)`, 'error');
+                            checkDone();
                         }
                     );
                 });
             }
 
-            checkLoadStatus(loaded, errors) {
-                const total = CONFIG.assets.textures.length;
-                if (loaded + errors === total) {
-                    log('------------------');
-                    log(`Done. Success: ${loaded}, Errors: ${errors}`);
-                    
-                    if (loaded > 0) {
-                        this.buildWorld();
-                        const btn = document.getElementById('start-btn');
-                        btn.style.display = 'block';
-                        btn.innerText = "READY - ENTER VR";
-                        // Start Loop
-                        this.renderer.setAnimationLoop(this.render.bind(this));
-                    } else {
-                        log('CRITICAL: No images loaded. Check filenames in GitHub.', 'error');
-                        // Build fallback world so you see something
-                        this.materials.push(new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true }));
-                        this.buildWorld();
-                        this.renderer.setAnimationLoop(this.render.bind(this));
-                    }
-                }
+            getRandomMaterial() {
+                if (this.materials.length === 0) return this.defaultMat;
+                return this.materials[Math.floor(Math.random() * this.materials.length)];
             }
+        }
 
-            buildWorld() {
-                log('Building World...');
+        class WorldBuilder {
+            constructor(scene, assetManager) {
+                this.scene = scene;
+                this.assetManager = assetManager;
+            }
+            build() {
+                log("WorldBuilder: Starting construction...");
                 const geo = new THREE.PlaneGeometry(CONFIG.world.unitSize, CONFIG.world.unitSize);
-                
-                for (let i = 0; i < CONFIG.world.count; i++) {
-                    // Pick random material from loaded ones
-                    const mat = this.materials[Math.floor(Math.random() * this.materials.length)];
-                    const mesh = new THREE.Mesh(geo, mat);
+                let count = 0;
 
-                    // Aspect Ratio Fix
-                    if (mat.userData.imgWidth && mat.userData.imgHeight) {
-                        const ar = mat.userData.imgWidth / mat.userData.imgHeight;
-                        if (ar >= 1) mesh.scale.set(1, 1 / ar, 1); 
-                        else mesh.scale.set(ar, 1, 1);
+                // 1. קוביות חירום - תמיד מופיעות
+                const emergencyGeo = new THREE.BoxGeometry(5, 5, 5);
+                const emergencyMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+                const box = new THREE.Mesh(emergencyGeo, emergencyMat);
+                box.position.set(0, 5, -20); // מול הפרצוף
+                this.scene.add(box);
+                log("EMERGENCY BOX ADDED at (0,5,-20) - Look for RED CUBE", 'warn');
+
+                // 2. רצפה - לייחוס
+                const grid = new THREE.GridHelper(200, 20);
+                grid.position.y = -20;
+                this.scene.add(grid);
+
+                // 3. המטריצה
+                for (let i = 0; i < CONFIG.world.megaStructureCount; i++) {
+                    // יוצר קבוצה רנדומלית
+                    const cx = (Math.random() - 0.5) * CONFIG.world.size;
+                    const cy = (Math.random() - 0.5) * CONFIG.world.size;
+                    const cz = (Math.random() - 0.5) * CONFIG.world.size;
+
+                    // יוצר בלוקים בתוך הקבוצה
+                    for (let x = 0; x < 3; x++) {
+                        for (let y = 0; y < 3; y++) {
+                            // צפיפות: אם המספר הרנדומלי נמוך מהצפיפות - דלג
+                            if (Math.random() < CONFIG.world.density) continue;
+
+                            const mat = this.assetManager.getRandomMaterial();
+                            const mesh = new THREE.Mesh(geo, mat);
+                            
+                            // תיקון פרופורציה לתמונה
+                            if (mat.userData.imgWidth && mat.userData.imgHeight) {
+                                const ar = mat.userData.imgWidth / mat.userData.imgHeight;
+                                if (ar >= 1) mesh.scale.set(1, 1 / ar, 1); 
+                                else mesh.scale.set(ar, 1, 1);
+                            }
+
+                            mesh.position.set(
+                                cx + (x * CONFIG.world.unitSize),
+                                cy + (y * CONFIG.world.unitSize),
+                                cz
+                            );
+                            
+                            // כיוון רנדומלי
+                            mesh.rotation.x = Math.random() * Math.PI;
+                            mesh.rotation.y = Math.random() * Math.PI;
+
+                            this.scene.add(mesh);
+                            count++;
+                        }
                     }
-
-                    // Random Position around user
-                    mesh.position.set(
-                        (Math.random() - 0.5) * 200,
-                        (Math.random() - 0.5) * 200,
-                        (Math.random() - 0.5) * 200
-                    );
-                    
-                    // Random Rotation
-                    mesh.rotation.set(
-                        Math.random() * Math.PI,
-                        Math.random() * Math.PI,
-                        0
-                    );
-
-                    this.structures.push(mesh);
-                    this.scene.add(mesh);
                 }
-                log(`${this.structures.length} planes created.`, 'success');
+                log(`WorldBuilder: Created ${count} planes.`, 'success');
+            }
+        }
+
+        class App {
+            constructor() {
+                log("App: Init...");
+                this.scene = new THREE.Scene();
+                this.scene.background = new THREE.Color(0x111111); // לא שחור מוחלט כדי לראות צלליות
+
+                this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+                this.dolly = new THREE.Group();
+                this.dolly.position.set(0, 0, 0); // מרכז
+                this.dolly.add(this.camera);
+                this.scene.add(this.dolly);
+
+                this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.xr.enabled = true;
+                document.body.appendChild(this.renderer.domElement);
+                document.body.appendChild(VRButton.createButton(this.renderer));
+
+                // בקרי שליטה (ידיים)
+                const controllerModelFactory = new XRControllerModelFactory();
+                const controller1 = this.renderer.xr.getController(0);
+                const controller2 = this.renderer.xr.getController(1);
+                
+                // קווים שיוצאים מהידיים כדי שתראה אותם
+                const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-1)]);
+                const line = new THREE.Line(lineGeo);
+                line.scale.z = 5;
+                controller1.add(line.clone());
+                controller2.add(line.clone());
+
+                this.dolly.add(controller1);
+                this.dolly.add(controller2);
+
+                // ניהול נכסים
+                this.assetManager = new AssetManager();
+                this.world = new WorldBuilder(this.scene, this.assetManager);
+
+                // התחלת טעינה
+                this.assetManager.loadConfigAssets(() => {
+                    log("Building world now...");
+                    this.world.build();
+                    
+                    const btn = document.getElementById('start-btn');
+                    btn.style.display = 'block';
+                    btn.addEventListener('click', () => {
+                        // אם צריך לנגן אודיו, זה המקום
+                    });
+                });
+
+                window.addEventListener('resize', () => {
+                    this.camera.aspect = window.innerWidth / window.innerHeight;
+                    this.camera.updateProjectionMatrix();
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                });
+
+                this.renderer.setAnimationLoop(this.render.bind(this));
             }
 
             render() {
-                // Slow rotation for effect
-                this.structures.forEach(mesh => {
-                    mesh.rotation.y += 0.002;
-                });
+                // הזזת המצלמה קלות כדי לוודא שהמסך לא קפא
+                // this.dolly.rotation.y += 0.001; 
                 this.renderer.render(this.scene, this.camera);
             }
         }
